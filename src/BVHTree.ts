@@ -1,7 +1,8 @@
 import type { BoundingBox } from '@galacean/engine-math';
 import { Vector3 } from '@galacean/engine-math';
 import { AABB } from './AABB';
-import type { BVHNode } from './BVHNode';
+import { BVHBuilder } from './BVHBuilder';
+import { BVHNode } from './BVHNode';
 import { CollisionResult } from './CollisionResult';
 import type { Ray } from './Ray';
 import type { BVHBuildStrategy } from './enums';
@@ -119,11 +120,45 @@ export class BVHTree {
     this._objectMap.delete(objectId);
     this._count--;
 
-    // 简单的移除策略：标记为空
-    node.userData = null;
-    node.objectId = -1;
+    const parent = node.parent;
 
-    // TODO: 优化树结构，合并空节点
+    // 如果是根节点，直接清空
+    if (!parent) {
+      this.root = null;
+      return true;
+    }
+
+    // 找到兄弟节点
+    const sibling = parent.left === node ? parent.right : parent.left;
+
+    // 如果没有兄弟节点，将父节点转换为空叶子
+    if (!sibling) {
+      parent.isLeaf = true;
+      parent.userData = null;
+      parent.objectId = -1;
+      parent.left = null;
+      parent.right = null;
+      if (parent.parent) {
+        parent.parent.updateBounds();
+      }
+      return true;
+    }
+
+    // 用兄弟节点替换父节点
+    const grandParent = parent.parent;
+    if (grandParent) {
+      if (grandParent.left === parent) {
+        grandParent.left = sibling;
+      } else {
+        grandParent.right = sibling;
+      }
+      sibling.parent = grandParent;
+      grandParent.updateBounds();
+    } else {
+      // 父节点是根节点，兄弟节点变为新的根节点
+      this.root = sibling;
+      sibling.parent = null;
+    }
 
     return true;
   }
@@ -243,8 +278,7 @@ export class BVHTree {
     // 清空现有树
     this.clear();
 
-    // 导入构建器创建新树
-    const { BVHBuilder } = require('./BVHBuilder');
+    // 使用构建器创建新树
     const newTree = BVHBuilder.build(objects, strategy);
 
     // 复制新树状态
@@ -298,46 +332,77 @@ export class BVHTree {
 
   /**
    * 验证树的状态是否健康
+   * @returns 验证结果，包含是否有效和错误信息
    */
-  validate(): boolean {
-    if (!this.root) return true;
+  validate(): { valid: boolean; errors: string[] } {
+    const errors: string[] = [];
 
-    try {
-      let valid = true;
-      const seen = new Set<number>();
+    if (!this.root) {
+      return { valid: this._count === 0, errors: this._count !== 0 ? ['根节点为空但计数不为零'] : [] };
+    }
 
-      const validateNode = (node: BVHNode): void => {
-        if (!node) return;
+    const seen = new Set<number>();
 
-        // 检查叶子节点
-        if (node.isLeaf) {
-          if (node.objectId >= 0 && !seen.has(node.objectId)) {
-            seen.add(node.objectId);
-          }
-        } else {
-          if (!node.left) valid = false;
-          if (node.right) validateNode(node.right);
-          if (node.left) validateNode(node.left);
-        }
-      };
+    const validateNode = (node: BVHNode, depth: number): void => {
+      if (!node) return;
 
-      validateNode(this.root);
-
-      // 验证计数
-      if (seen.size !== this._count) {
-        valid = false;
+      // 检查深度一致性
+      if (node.depth !== depth) {
+        errors.push(`节点深度不一致: 期望 ${depth}, 实际 ${node.depth}`);
       }
 
-      return valid;
-    } catch (error) {
-      return false;
+      // 检查叶子节点
+      if (node.isLeaf) {
+        if (node.objectId >= 0) {
+          if (seen.has(node.objectId)) {
+            errors.push(`重复的对象 ID: ${node.objectId}`);
+          } else {
+            seen.add(node.objectId);
+          }
+          if (!this._objectMap.has(node.objectId)) {
+            errors.push(`对象 ID ${node.objectId} 不在映射中`);
+          }
+        }
+        // 叶子节点不应该有子节点
+        if (node.left || node.right) {
+          errors.push('叶子节点不应该有子节点');
+        }
+      } else {
+        // 内部节点必须有左子节点
+        if (!node.left) {
+          errors.push('内部节点缺少左子节点');
+        } else {
+          // 检查父引用
+          if (node.left.parent !== node) {
+            errors.push('左子节点的父引用不正确');
+          }
+          validateNode(node.left, depth + 1);
+        }
+        if (node.right) {
+          if (node.right.parent !== node) {
+            errors.push('右子节点的父引用不正确');
+          }
+          validateNode(node.right, depth + 1);
+        }
+      }
+    };
+
+    validateNode(this.root, 0);
+
+    // 验证计数
+    if (seen.size !== this._count) {
+      errors.push(`对象计数不匹配: 期望 ${this._count}, 实际 ${seen.size}`);
     }
+
+    return { valid: errors.length === 0, errors };
   }
 
   // ==================== 私有辅助方法 ====================
 
   private findBestLeaf(node: BVHNode, bounds: BoundingBox): BVHNode {
     if (node.isLeaf) return node;
+
+    if (!node.left) return node;
 
     const leftGrow = this.calculateBoundsGrowth(node.left.bounds, bounds);
     const rightGrow = node.right ? this.calculateBoundsGrowth(node.right.bounds, bounds) : Infinity;
@@ -374,7 +439,7 @@ export class BVHTree {
   private splitLeaf(
     leaf: BVHNode,
     newBounds: BoundingBox,
-    newUserData: any,
+    newUserData: unknown,
     newObjectId: number,
   ): void {
     // 创建新叶子节点
@@ -399,18 +464,19 @@ export class BVHTree {
     const allBounds = [existingData.bounds, newBounds];
     const splitAxis = this.getLongestAxis(allBounds);
 
-    // 中点分割
-    const mid =
-      (existingData.bounds.min[splitAxis] +
-        existingData.bounds.max[splitAxis] +
-        newBounds.min[splitAxis] +
-        newBounds.max[splitAxis]) /
-      4;
+    // 决定左右分配 - 使用显式属性访问而非索引
+    const getAxisValue = (v: Vector3, axis: number): number => {
+      if (axis === 0) return v.x;
+      if (axis === 1) return v.y;
+      return v.z;
+    };
 
-    // 决定左右分配
     const existingMid =
-      (existingData.bounds.min[splitAxis] + existingData.bounds.max[splitAxis]) / 2;
-    const newMid = (newBounds.min[splitAxis] + newBounds.max[splitAxis]) / 2;
+      (getAxisValue(existingData.bounds.min, splitAxis) +
+        getAxisValue(existingData.bounds.max, splitAxis)) /
+      2;
+    const newMid =
+      (getAxisValue(newBounds.min, splitAxis) + getAxisValue(newBounds.max, splitAxis)) / 2;
 
     const existingDataNode = BVHNode.createLeaf(
       existingData.bounds,
@@ -440,30 +506,28 @@ export class BVHTree {
   private insertRecursive(
     node: BVHNode,
     bounds: BoundingBox,
-    userData: any,
+    userData: unknown,
     objectId: number,
     depth: number,
   ): void {
     if (depth >= this.maxDepth) {
-      // 创建一个新叶子节点作为兄弟
-      const newLeaf = BVHNode.createLeaf(bounds, userData, objectId, depth);
-      this._objectMap.set(objectId, newLeaf);
-
-      // 包装在内部节点中
-      const parent = node.parent;
-      if (parent) {
-        const sibling = node;
-        const internal = BVHNode.createInternal(sibling.bounds, sibling, newLeaf, depth);
-        newLeaf.parent = internal;
-        sibling.parent = internal;
-
-        if (parent.left === node) parent.left = internal;
-        else parent.right = internal;
-
-        internal.parent = parent;
-        parent.updateBounds();
+      // 达到最大深度时，强制在当前节点进行分裂
+      if (node.isLeaf) {
+        this.splitLeaf(node, bounds, userData, objectId);
+      } else {
+        // 如果是内部节点，选择增长最小的子树插入
+        if (node.left && node.right) {
+          const leftGrow = this.calculateBoundsGrowth(node.left.bounds, bounds);
+          const rightGrow = this.calculateBoundsGrowth(node.right.bounds, bounds);
+          if (leftGrow <= rightGrow) {
+            this.splitLeaf(node.left, bounds, userData, objectId);
+          } else {
+            this.splitLeaf(node.right, bounds, userData, objectId);
+          }
+        } else if (node.left) {
+          this.splitLeaf(node.left, bounds, userData, objectId);
+        }
       }
-
       return;
     }
 
@@ -472,24 +536,49 @@ export class BVHTree {
       return;
     }
 
+    // 非叶子节点，选择增长最小的子树递归插入
+    if (!node.left) {
+      // 异常情况：非叶子节点无左子节点，直接创建
+      node.left = BVHNode.createLeaf(bounds, userData, objectId, depth);
+      node.left.parent = node;
+      this._objectMap.set(objectId, node.left);
+      node.updateBounds();
+      return;
+    }
+
     const leftGrow = this.calculateBoundsGrowth(node.left.bounds, bounds);
     const rightGrow = node.right ? this.calculateBoundsGrowth(node.right.bounds, bounds) : Infinity;
 
-    if (leftGrow < rightGrow) {
+    if (leftGrow <= rightGrow) {
       this.insertRecursive(node.left, bounds, userData, objectId, depth + 1);
     } else if (node.right) {
       this.insertRecursive(node.right, bounds, userData, objectId, depth + 1);
     } else {
-      // 单子节点情况
+      // 无右子节点，在左子节点继续
       this.insertRecursive(node.left, bounds, userData, objectId, depth + 1);
     }
   }
 
   private calculateBoundsGrowth(oldBounds: BoundingBox, newBounds: BoundingBox): number {
-    const oldAABB = AABB.fromBoundingBox(oldBounds);
-    const newAABB = AABB.fromBoundingBox(newBounds);
-    const union = oldAABB.union(newAABB);
-    return union.volume() - oldAABB.volume();
+    // 直接计算体积变化，避免创建临时 AABB 对象
+    const unionMinX = Math.min(oldBounds.min.x, newBounds.min.x);
+    const unionMinY = Math.min(oldBounds.min.y, newBounds.min.y);
+    const unionMinZ = Math.min(oldBounds.min.z, newBounds.min.z);
+    const unionMaxX = Math.max(oldBounds.max.x, newBounds.max.x);
+    const unionMaxY = Math.max(oldBounds.max.y, newBounds.max.y);
+    const unionMaxZ = Math.max(oldBounds.max.z, newBounds.max.z);
+
+    const unionVolume =
+      Math.max(0, unionMaxX - unionMinX) *
+      Math.max(0, unionMaxY - unionMinY) *
+      Math.max(0, unionMaxZ - unionMinZ);
+
+    const oldVolume =
+      Math.max(0, oldBounds.max.x - oldBounds.min.x) *
+      Math.max(0, oldBounds.max.y - oldBounds.min.y) *
+      Math.max(0, oldBounds.max.z - oldBounds.min.z);
+
+    return unionVolume - oldVolume;
   }
 
   private getLongestAxis(boundsArray: BoundingBox[]): number {
@@ -525,7 +614,6 @@ export class BVHTree {
       const distance = aabb.intersectRayDistance(ray);
 
       if (distance !== null && (maxDistance === undefined || distance <= maxDistance)) {
-        const ctrl = new AABB();
         const point = ray.getPoint(distance);
         // 简化的法线计算（实际可以根据面方向计算）
         const normal = this.calculateNormal(node.bounds, point);
@@ -544,7 +632,7 @@ export class BVHTree {
     if (node.right) this.raycastRecursive(node.right, ray, results, maxDistance);
   }
 
-  private queryRangeRecursive(node: BVHNode, range: AABB, results: any[]): void {
+  private queryRangeRecursive(node: BVHNode, range: AABB, results: unknown[]): void {
     if (node.isLeaf) {
       if (node.objectId >= 0 && node.userData !== undefined) {
         results.push(node.userData);
@@ -563,38 +651,23 @@ export class BVHTree {
   private findNearestRecursive(
     node: BVHNode,
     position: Vector3,
-    candidates: { distance: number; data: any }[],
+    candidates: { distance: number; data: unknown }[],
     maxDistance?: number,
   ): void {
+    // 计算位置到包围盒的最近点距离
+    const minDistance = this.getDistanceToBounding(position, node.bounds);
+
+    // 早期剪枝
+    if (maxDistance !== undefined && minDistance > maxDistance) return;
+
     if (node.isLeaf) {
       if (node.objectId < 0 || node.userData === undefined) return;
 
-      const center = new AABB().getCenter(); // 暂时用空的
-      const bounds = AABB.fromBoundingBox(node.bounds);
-      const nearestPoint = new Vector3(
-        Math.max(bounds.min.x, Math.min(position.x, bounds.max.x)),
-        Math.max(bounds.min.y, Math.min(position.y, bounds.max.y)),
-        Math.max(bounds.min.z, Math.min(position.z, bounds.max.z)),
-      );
-
-      const distance = Vector3.distance(position, nearestPoint);
-
-      if (maxDistance === undefined || distance <= maxDistance) {
-        candidates.push({ distance, data: node.userData });
+      if (maxDistance === undefined || minDistance <= maxDistance) {
+        candidates.push({ distance: minDistance, data: node.userData });
       }
       return;
     }
-
-    // 计算位置到包围盒的距离
-    const bounds = AABB.fromBoundingBox(node.bounds);
-    const nearestPoint = new Vector3(
-      Math.max(bounds.min.x, Math.min(position.x, bounds.max.x)),
-      Math.max(bounds.min.y, Math.min(position.y, bounds.max.y)),
-      Math.max(bounds.min.z, Math.min(position.z, bounds.max.z)),
-    );
-    const minDistance = Vector3.distance(position, nearestPoint);
-
-    if (maxDistance !== undefined && minDistance > maxDistance) return;
 
     // 优先搜索较近的子节点
     const left = node.left;
@@ -604,7 +677,8 @@ export class BVHTree {
       const leftDist = this.getDistanceToBounding(position, left.bounds);
       const rightDist = this.getDistanceToBounding(position, right.bounds);
 
-      if (leftDist < rightDist) {
+      // 按距离排序搜索，可以更快找到最近的对象
+      if (leftDist <= rightDist) {
         this.findNearestRecursive(left, position, candidates, maxDistance);
         this.findNearestRecursive(right, position, candidates, maxDistance);
       } else {
@@ -618,7 +692,7 @@ export class BVHTree {
     }
   }
 
-  private intersectBoundsRecursive(node: BVHNode, bounds: BoundingBox, results: any[]): void {
+  private intersectBoundsRecursive(node: BVHNode, bounds: BoundingBox, results: unknown[]): void {
     if (node.isLeaf) {
       if (node.objectId >= 0 && node.userData !== undefined) {
         const nodeAABB = AABB.fromBoundingBox(node.bounds);

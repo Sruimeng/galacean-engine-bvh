@@ -14,6 +14,9 @@ export class AABB extends BoundingVolume {
   /** 最大角点 */
   public max: Vector3;
 
+  /** 复用的临时向量，用于射线相交计算 */
+  private static readonly _tempInvDir = new Vector3();
+
   /**
    * 创建 AABB
    * @param min - 最小角点 (默认: +∞)
@@ -64,7 +67,11 @@ export class AABB extends BoundingVolume {
    * @returns 相交距离，如果不相交返回 null
    */
   intersectRayDistance(ray: Ray): number | null {
-    const invDir = new Vector3(1 / ray.direction.x, 1 / ray.direction.y, 1 / ray.direction.z);
+    // 复用静态向量避免每次创建新对象
+    const invDir = AABB._tempInvDir;
+    invDir.x = 1 / ray.direction.x;
+    invDir.y = 1 / ray.direction.y;
+    invDir.z = 1 / ray.direction.z;
 
     let tMin = -Infinity;
     let tMax = Infinity;

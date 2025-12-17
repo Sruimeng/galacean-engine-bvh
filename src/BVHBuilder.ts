@@ -1,6 +1,6 @@
-import { BoundingBox, Vector3 } from '@galacean/engine-math';
-import { BVHTree } from './BVHTree';
+import type { BoundingBox } from '@galacean/engine-math';
 import { AABB } from './AABB';
+import { BVHTree } from './BVHTree';
 import { BVHBuildStrategy } from './enums';
 import type { BVHInsertObject } from './types';
 
@@ -18,7 +18,7 @@ export class BVHBuilder {
    */
   static build(
     objects: BVHInsertObject[],
-    strategy: BVHBuildStrategy = BVHBuildStrategy.SAH
+    strategy: BVHBuildStrategy = BVHBuildStrategy.SAH,
   ): BVHTree {
     if (objects.length === 0) {
       return new BVHTree();
@@ -34,18 +34,16 @@ export class BVHBuilder {
       return tree;
     }
 
-    const processed = new Set<number>();
-
     // 根据策略选择构建方法
     switch (strategy) {
       case BVHBuildStrategy.SAH:
-        this.buildSAH(tree, objects, processed);
+        this.buildSAH(tree, objects);
         break;
       case BVHBuildStrategy.Median:
-        this.buildMedian(tree, objects, processed);
+        this.buildMedian(tree, objects);
         break;
       case BVHBuildStrategy.Equal:
-        this.buildEqual(tree, objects, processed);
+        this.buildEqual(tree, objects);
         break;
     }
 
@@ -57,7 +55,7 @@ export class BVHBuilder {
    *
    * 最优但最慢的策略，查询性能最佳
    */
-  private static buildSAH(tree: BVHTree, objects: BVHInsertObject[], processed: Set<number>): void {
+  private static buildSAH(tree: BVHTree, objects: BVHInsertObject[]): void {
     if (objects.length === 0) return;
 
     // 如果对象数量少，直接逐个插入
@@ -100,7 +98,7 @@ export class BVHBuilder {
 
     // 避免无限递归 - 如果分割不合理，使用中点分割
     if (leftObjects.length === 0 || rightObjects.length === 0) {
-      this.buildMedian(tree, objects, processed);
+      this.buildMedian(tree, objects);
       return;
     }
 
@@ -110,7 +108,7 @@ export class BVHBuilder {
         tree.insert(obj.bounds, obj.userData);
       }
     } else {
-      this.buildSAH(tree, leftObjects, processed);
+      this.buildSAH(tree, leftObjects);
     }
 
     if (rightObjects.length <= tree.maxLeafSize) {
@@ -118,7 +116,7 @@ export class BVHBuilder {
         tree.insert(obj.bounds, obj.userData);
       }
     } else {
-      this.buildSAH(tree, rightObjects, processed);
+      this.buildSAH(tree, rightObjects);
     }
   }
 
@@ -127,7 +125,7 @@ export class BVHBuilder {
    *
    * 构建快速，性能均衡，适合动态场景
    */
-  private static buildMedian(tree: BVHTree, objects: BVHInsertObject[], processed: Set<number>): void {
+  private static buildMedian(tree: BVHTree, objects: BVHInsertObject[]): void {
     if (objects.length === 0) return;
 
     // 少量对象直接插入
@@ -171,7 +169,7 @@ export class BVHBuilder {
           tree.insert(obj.bounds, obj.userData);
         }
       } else {
-        this.buildMedian(tree, leftObjects, processed);
+        this.buildMedian(tree, leftObjects);
       }
     }
 
@@ -181,7 +179,7 @@ export class BVHBuilder {
           tree.insert(obj.bounds, obj.userData);
         }
       } else {
-        this.buildMedian(tree, rightObjects, processed);
+        this.buildMedian(tree, rightObjects);
       }
     }
   }
@@ -191,7 +189,7 @@ export class BVHBuilder {
    *
    * 适用于均匀分布的场景，构建较快
    */
-  private static buildEqual(tree: BVHTree, objects: BVHInsertObject[], processed: Set<number>): void {
+  private static buildEqual(tree: BVHTree, objects: BVHInsertObject[]): void {
     if (objects.length === 0) return;
 
     // 少量对象直接插入
@@ -248,7 +246,7 @@ export class BVHBuilder {
           tree.insert(obj.bounds, obj.userData);
         }
       } else {
-        this.buildEqual(tree, subset, processed);
+        this.buildEqual(tree, subset);
       }
     };
 
@@ -276,30 +274,117 @@ export class BVHBuilder {
   /**
    * 获取包围盒中心点
    */
-  private static getCenter(bounds: BoundingBox): { x: number; y: number; z: number; } {
+  private static getCenter(bounds: BoundingBox): { x: number; y: number; z: number } {
     return {
       x: (bounds.min.x + bounds.max.x) / 2,
       y: (bounds.min.y + bounds.max.y) / 2,
-      z: (bounds.min.z + bounds.max.z) / 2
+      z: (bounds.min.z + bounds.max.z) / 2,
     };
   }
 
   /**
    * SAH 策略：寻找最佳分割位置
+   *
+   * SAH 代价计算公式: C = C_traversal + (SA_left / SA_parent) * N_left + (SA_right / SA_parent) * N_right
+   * 我们需要找到使代价最小的分割位置
    */
   private static findBestSplitPositionSAH(
     objects: BVHInsertObject[],
     axis: number,
-    unionAABB: AABB
+    parentAABB: AABB,
   ): number {
-    // 简化实现：使用中点作为候选
-    const centers = objects.map(obj => this.getCenter(obj.bounds)[axis === 0 ? 'x' : axis === 1 ? 'y' : 'z']);
-    centers.sort((a, b) => a - b);
+    const numBuckets = 12; // 使用桶(bucket)来离散化候选分割位置
+    const parentSA = parentAABB.surfaceArea();
 
-    // 过滤掉重复值，保留中间位置
-    const unique = [...new Set(centers)];
-    if (unique.length === 0) return 0;
+    if (parentSA <= 0) {
+      // 退化情况，使用中点
+      const center = parentAABB.getCenter();
+      return axis === 0 ? center.x : axis === 1 ? center.y : center.z;
+    }
 
-    return unique[Math.floor(unique.length / 2)];
+    // 计算父包围盒在分割轴上的范围
+    const axisMin =
+      axis === 0 ? parentAABB.min.x : axis === 1 ? parentAABB.min.y : parentAABB.min.z;
+    const axisMax =
+      axis === 0 ? parentAABB.max.x : axis === 1 ? parentAABB.max.y : parentAABB.max.z;
+    const axisRange = axisMax - axisMin;
+
+    if (axisRange <= 0) {
+      return axisMin;
+    }
+
+    // 初始化桶
+    const buckets: { count: number; bounds: AABB | null }[] = [];
+    for (let i = 0; i < numBuckets; i++) {
+      buckets.push({ count: 0, bounds: null });
+    }
+
+    // 将对象分配到桶中
+    for (const obj of objects) {
+      const center = this.getCenter(obj.bounds);
+      const centroid = axis === 0 ? center.x : axis === 1 ? center.y : center.z;
+      let bucketIdx = Math.floor(((centroid - axisMin) / axisRange) * numBuckets);
+      bucketIdx = Math.min(bucketIdx, numBuckets - 1);
+      bucketIdx = Math.max(bucketIdx, 0);
+
+      buckets[bucketIdx].count++;
+      const objAABB = AABB.fromBoundingBox(obj.bounds);
+      if (buckets[bucketIdx].bounds === null) {
+        buckets[bucketIdx].bounds = objAABB;
+      } else {
+        buckets[bucketIdx].bounds = buckets[bucketIdx].bounds!.union(objAABB);
+      }
+    }
+
+    // 计算每个分割点的 SAH 代价
+    let bestCost = Infinity;
+    let bestSplitIdx = Math.floor(numBuckets / 2);
+
+    for (let i = 1; i < numBuckets; i++) {
+      // 计算左侧包围盒和对象数
+      let leftBounds: AABB | null = null;
+      let leftCount = 0;
+      for (let j = 0; j < i; j++) {
+        if (buckets[j].bounds !== null) {
+          if (leftBounds === null) {
+            leftBounds = buckets[j].bounds;
+          } else {
+            leftBounds = leftBounds.union(buckets[j].bounds!);
+          }
+        }
+        leftCount += buckets[j].count;
+      }
+
+      // 计算右侧包围盒和对象数
+      let rightBounds: AABB | null = null;
+      let rightCount = 0;
+      for (let j = i; j < numBuckets; j++) {
+        if (buckets[j].bounds !== null) {
+          if (rightBounds === null) {
+            rightBounds = buckets[j].bounds;
+          } else {
+            rightBounds = rightBounds.union(buckets[j].bounds!);
+          }
+        }
+        rightCount += buckets[j].count;
+      }
+
+      // 如果任一侧为空，跳过此分割点
+      if (leftCount === 0 || rightCount === 0) continue;
+      if (leftBounds === null || rightBounds === null) continue;
+
+      // 计算 SAH 代价
+      const leftSA = leftBounds.surfaceArea();
+      const rightSA = rightBounds.surfaceArea();
+      const cost = 0.125 + (leftSA * leftCount + rightSA * rightCount) / parentSA;
+
+      if (cost < bestCost) {
+        bestCost = cost;
+        bestSplitIdx = i;
+      }
+    }
+
+    // 返回最佳分割位置
+    return axisMin + (bestSplitIdx / numBuckets) * axisRange;
   }
 }

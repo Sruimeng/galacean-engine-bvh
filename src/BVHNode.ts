@@ -1,5 +1,4 @@
 import { BoundingBox } from '@galacean/engine-math';
-import { AABB } from './AABB';
 
 /**
  * BVH 树节点
@@ -46,13 +45,6 @@ export class BVHNode {
     if (this.left) count++;
     if (this.right) count++;
     return count;
-  }
-
-  /**
-   * 是叶子节点的别名（兼容性）
-   */
-  isLeafNode(): boolean {
-    return this.isLeaf;
   }
 
   /**
@@ -116,11 +108,20 @@ export class BVHNode {
    */
   updateBounds(): void {
     if (!this.isLeaf && this.left && this.right) {
-      const aabb = new AABB();
-      const leftAABB = AABB.fromBoundingBox(this.left.bounds);
-      const rightAABB = AABB.fromBoundingBox(this.right.bounds);
-      const union = leftAABB.union(rightAABB);
-      this.bounds = union.getBounds();
+      // 直接计算合并后的包围盒，避免创建临时 AABB 对象
+      const minX = Math.min(this.left.bounds.min.x, this.right.bounds.min.x);
+      const minY = Math.min(this.left.bounds.min.y, this.right.bounds.min.y);
+      const minZ = Math.min(this.left.bounds.min.z, this.right.bounds.min.z);
+      const maxX = Math.max(this.left.bounds.max.x, this.right.bounds.max.x);
+      const maxY = Math.max(this.left.bounds.max.y, this.right.bounds.max.y);
+      const maxZ = Math.max(this.left.bounds.max.z, this.right.bounds.max.z);
+
+      this.bounds.min.x = minX;
+      this.bounds.min.y = minY;
+      this.bounds.min.z = minZ;
+      this.bounds.max.x = maxX;
+      this.bounds.max.y = maxY;
+      this.bounds.max.z = maxZ;
     }
 
     // 向上更新父节点
