@@ -28,6 +28,7 @@
   },
   "browserslist": [],
   "dependencies": {
+    "@galacean/engine-math": "^1.5.16",
     "@vitejs/plugin-react": "^4.6.0",
     "eslint-config-prettier": "^10.1.5",
     "eventemitter3": "^5.0.1",
