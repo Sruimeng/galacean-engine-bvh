@@ -29,6 +29,7 @@ jobs:
           # 这里通常直接用 GitHub 内置的 Token 即可，不需要额外配置 Secret
           github_token: ${{ secrets.GITHUB_TOKEN }}
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          model: ${{ secrets.ANTHROPIC_MODEL }}
           use_sticky_comment: true # 开启后会更新同一条评论，而不是每次都发新的
           show_full_output: true
           prompt: |
@@ -72,4 +73,4 @@ jobs:
             ALWAYS Answer in 简体中文.
           # 移除了 --json-schema，因为没有飞书步骤后，我们不需要强制它输出机器可读的 JSON 统计了
           claude_args: |
-            --allowedTools "Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Read,Glob,Grep,Task"
+            --model ${{ secrets.ANTHROPIC_MODEL }} --allowedTools "Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Read,Glob,Grep,Task"
