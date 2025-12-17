@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Galacean Engine BVH Demo Center</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+        color: #333;
+        min-height: 100vh;
+      }
+
+      .container {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 20px;
+      }
+
+      header {
+        text-align: center;
+        padding: 40px 0;
+        color: white;
+      }
+
+      header h1 {
+        font-size: 3em;
+        margin-bottom: 10px;
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+      }
+
+      header p {
+        font-size: 1.2em;
+        opacity: 0.9;
+      }
+
+      .demo-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+        gap: 25px;
+        margin-top: 40px;
+      }
+
+      .demo-card {
+        background: white;
+        border-radius: 12px;
+        padding: 30px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        transition: transform 0.3s ease;
+      }
+
+      .demo-card:hover {
+        transform: translateY(-5px);
+      }
+
+      .demo-card h2 {
+        color: #2c3e50;
+        margin-bottom: 15px;
+        font-size: 1.5em;
+      }
+
+      .demo-card p {
+        color: #666;
+        line-height: 1.6;
+        margin-bottom: 20px;
+      }
+
+      .demo-card .actions {
+        display: flex;
+        gap: 10px;
+      }
+
+      .demo-card button {
+        flex: 1;
+        padding: 12px 20px;
+        border: none;
+        border-radius: 6px;
+        font-size: 1em;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        font-weight: 500;
+      }
+
+      .btn-primary {
+        background: #007bff;
+        color: white;
+      }
+
+      .btn-primary:hover {
+        background: #0056b3;
+      }
+
+      .btn-secondary {
+        background: #6c757d;
+        color: white;
+      }
+
+      .btn-secondary:hover {
+        background: #545b62;
+      }
+
+      .footer {
+        text-align: center;
+        padding: 40px 0;
+        color: white;
+        opacity: 0.8;
+      }
+
+      .footer a {
+        color: white;
+        text-decoration: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <h1>Three.js USD DSL</h1>
+        <p>
+          A Domain Specific Language for USD (Universal Scene Description) integration with Three.js
+        </p>
+      </header>
+
+      <div class="demo-grid">
+        <!-- Basic DSL Demo -->
+        <div class="demo-card">
+          <h2>Basic DSL</h2>
+          <p>
+            Create simple 3D scenes with basic geometries, materials, and lighting. Perfect for
+            getting started.
+          </p>
+          <div class="actions">
+            <button class="btn-primary" onclick="window.open('html/basic-dsl.html', '_blank')">
+              Open Demo
+            </button>
+            <button
+              class="btn-secondary"
+              onclick="window.open('examples/basic-scene.html', '_blank')"
+            >
+              View Source
+            </button>
+          </div>
+        </div>
+
+        <!-- Material DSL Demo -->
+        <div class="demo-card">
+          <h2>Material System</h2>
+          <p>
+            Explore advanced materials including PBR, physically-based rendering, and complex shader
+            networks.
+          </p>
+          <div class="actions">
+            <button class="btn-primary" onclick="window.open('html/material-dsl.html', '_blank')">
+              Open Demo
+            </button>
+            <button
+              class="btn-secondary"
+              onclick="window.open('examples/material-demo.html', '_blank')"
+            >
+              View Source
+            </button>
+          </div>
+        </div>
+
+        <!-- GLTF Model Demo -->
+        <div class="demo-card">
+          <h2>GLTF Models</h2>
+          <p>
+            Load and display 3D models in GLTF format with animations, materials, and complex
+            hierarchies.
+          </p>
+          <div class="actions">
+            <button class="btn-primary" onclick="window.open('html/gltf-demo.html', '_blank')">
+              Open Demo
+            </button>
+            <button
+              class="btn-secondary"
+              onclick="window.open('examples/model-demo.html', '_blank')"
+            >
+              View Source
+            </button>
+          </div>
+        </div>
+
+        <!-- Plugin Demo -->
+        <div class="demo-card">
+          <h2>Plugin System</h2>
+          <p>Extend functionality with custom plugins for rendering, interaction, and more.</p>
+          <div class="actions">
+            <button class="btn-primary" onclick="window.open('html/plugin-demo.html', '_blank')">
+              Open Demo
+            </button>
+            <button
+              class="btn-secondary"
+              onclick="window.open('examples/plugin-demo.html', '_blank')"
+            >
+              View Source
+            </button>
+          </div>
+        </div>
+
+        <!-- MCP Demo -->
+        <div class="demo-card">
+          <h2>MCP Integration</h2>
+          <p>AI-powered scene generation and manipulation through Model Context Protocol.</p>
+          <div class="actions">
+            <button class="btn-primary" onclick="window.open('html/mcp-demo.html', '_blank')">
+              Open Demo
+            </button>
+            <button class="btn-secondary" onclick="window.open('examples/mcp-demo.html', '_blank')">
+              View Source
+            </button>
+          </div>
+        </div>
+
+        <!-- Undo/Redo Demo -->
+        <div class="demo-card">
+          <h2>Undo/Redo System</h2>
+          <p>Complete undo/redo functionality with command pattern for all scene operations.</p>
+          <div class="actions">
+            <button class="btn-primary" onclick="window.open('html/undo-redo-demo.html', '_blank')">
+              Open Demo
+            </button>
+            <button
+              class="btn-secondary"
+              onclick="window.open('examples/undo-redo-demo.html', '_blank')"
+            >
+              View Source
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <footer class="footer">
+        <p>
+          Built with ❤️ using <a href="https://threejs.org" target="_blank">Three.js</a> and
+          <a href="https://github.com/PixarAnimationStudios/USD" target="_blank">USD</a>
+        </p>
+      </footer>
+    </div>
+
+    <script>
+      // Add simple interactive effects
+      document.addEventListener('DOMContentLoaded', function () {
+        const cards = document.querySelectorAll('.demo-card');
+
+        cards.forEach((card) => {
+          card.style.opacity = '0';
+          card.style.transform = 'translateY(20px)';
+          card.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
+
+          setTimeout(() => {
+            card.style.opacity = '1';
+            card.style.transform = 'translateY(0)';
+          }, 100);
+        });
+      });
+    </script>
+  </body>
+</html>

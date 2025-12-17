@@ -1,0 +1,90 @@
+{
+  "name": "@sruimeng/galacean-engine-bvh",
+  "version": "0.0.1",
+  "description": "Galacean Engine BVH is a library for loading and animating BVH files in Galacean Engine.",
+  "module": "./dist/index.mjs",
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs"
+    }
+  },
+  "scripts": {
+    "dev": "vite",
+    "preview": "concurrently \"vite build\" \"sleep 6 && vite preview\"",
+    "prebuild": "pnpm clean",
+    "build": "pnpm build:module",
+    "build:module": "rollup -c",
+    "build:docs": "pnpm build && typedoc",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "check:ts": "tsc -b ./tsconfig.check.json",
+    "clean": "rimraf dist",
+    "prepare": "husky install",
+    "prepublishOnly": "pnpm build"
+  },
+  "browserslist": [],
+  "dependencies": {
+    "@vitejs/plugin-react": "^4.6.0",
+    "eslint-config-prettier": "^10.1.5",
+    "eventemitter3": "^5.0.1",
+    "html2canvas": "^1.4.1",
+    "immer": "^10.1.1",
+    "prettier-plugin-organize-imports": "^4.1.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zustand": "^5.0.3"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^19.3.0",
+    "@commitlint/config-conventional": "^19.2.2",
+    "@eslint/js": "^9.27.0",
+    "@react-three/eslint-plugin": "^0.1.2",
+    "@rollup/plugin-commonjs": "^21.1.0",
+    "@rollup/plugin-inject": "^5.0.5",
+    "@rollup/plugin-node-resolve": "^13.3.0",
+    "@swc/core": "^1.4.13",
+    "@swc/helpers": "^0.5.8",
+    "@types/react-dom": "^19.1.2",
+    "@typescript-eslint/eslint-plugin": "^7.10.0",
+    "@typescript-eslint/parser": "^7.10.0",
+    "@unocss/eslint-config": "^66.1.2",
+    "@vitejs/plugin-legacy": "^4.1.1",
+    "concurrently": "^8.2.2",
+    "eslint": "^8.57.0",
+    "eslint-plugin-compat": "^4.2.0",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
+    "eslint-plugin-prettier": "^5.4.0",
+    "eslint-plugin-promise": "^6.1.1",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "husky": "^7.0.4",
+    "lint-staged": "^11.2.6",
+    "pnpm": "^8.15.8",
+    "prettier": "^3.5.3",
+    "rimraf": "4",
+    "rollup": "^2.79.1",
+    "rollup-plugin-swc3": "^0.11.0",
+    "tslib": "^2.6.2",
+    "typedoc": "^0.25.12",
+    "typescript": "^5.4.5",
+    "typescript-eslint": "^8.32.1",
+    "vite": "^4.5.3",
+    "vite-tsconfig-paths": "^4.3.2"
+  },
+  "contributors": [
+    {
+      "name": "Sruim"
+    }
+  ],
+  "author": "Sruim",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  },
+  "packageManager": "pnpm@10.10.0+sha512.d615db246fe70f25dcfea6d8d73dee782ce23e2245e3c4f6f888249fb568149318637dca73c2c5c8ef2a4ca0d5657fb9567188bfab47f566d1ee6ce987815c39"
+}
