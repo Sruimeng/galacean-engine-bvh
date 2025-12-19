@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Galacean Engine BVH 集成演示</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        background: #1a1a2e;
+        color: white;
+        overflow: hidden;
+      }
+
+      #canvas-container {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+      }
+
+      #canvas {
+        width: 100%;
+        height: 100%;
+      }
+
+      .panel {
+        position: fixed;
+        top: 20px;
+        left: 20px;
+        background: rgba(0, 0, 0, 0.8);
+        padding: 20px;
+        border-radius: 12px;
+        min-width: 320px;
+        z-index: 100;
+      }
+
+      .panel h2 {
+        margin-bottom: 15px;
+        font-size: 1.3em;
+        color: #4fc3f7;
+      }
+
+      .stat-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 8px 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      }
+
+      .stat-label {
+        color: #aaa;
+      }
+
+      .stat-value {
+        color: #4caf50;
+        font-weight: bold;
+      }
+
+      .controls {
+        margin-top: 15px;
+        padding-top: 15px;
+        border-top: 1px solid rgba(255, 255, 255, 0.2);
+      }
+
+      .control-row {
+        margin-bottom: 12px;
+      }
+
+      .control-row label {
+        display: block;
+        margin-bottom: 5px;
+        color: #aaa;
+        font-size: 0.9em;
+      }
+
+      .control-row input[type="range"] {
+        width: 100%;
+      }
+
+      .control-row select {
+        width: 100%;
+        padding: 8px;
+        border-radius: 4px;
+        border: none;
+        background: #333;
+        color: white;
+      }
+
+      button {
+        width: 100%;
+        padding: 12px;
+        margin-top: 10px;
+        border: none;
+        border-radius: 6px;
+        background: #2196f3;
+        color: white;
+        font-size: 1em;
+        cursor: pointer;
+        transition: background 0.3s;
+      }
+
+      button:hover {
+        background: #1976d2;
+      }
+
+      button.secondary {
+        background: #607d8b;
+      }
+
+      button.secondary:hover {
+        background: #455a64;
+      }
+
+      .info-panel {
+        position: fixed;
+        bottom: 20px;
+        left: 20px;
+        background: rgba(0, 0, 0, 0.8);
+        padding: 15px 20px;
+        border-radius: 8px;
+        font-size: 0.9em;
+        z-index: 100;
+      }
+
+      .info-panel p {
+        margin: 5px 0;
+        color: #aaa;
+      }
+
+      .info-panel strong {
+        color: #4fc3f7;
+      }
+
+      .hit-indicator {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        margin-left: 8px;
+        vertical-align: middle;
+      }
+
+      .hit-indicator.hit {
+        background: #4caf50;
+        box-shadow: 0 0 10px #4caf50;
+      }
+
+      .hit-indicator.miss {
+        background: #f44336;
+      }
+
+      .back-link {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        color: white;
+        text-decoration: none;
+        background: rgba(0, 0, 0, 0.5);
+        padding: 10px 20px;
+        border-radius: 6px;
+        z-index: 100;
+      }
+
+      .back-link:hover {
+        background: rgba(0, 0, 0, 0.7);
+      }
+    </style>
+  </head>
+  <body>
+    <a href="../index.html" class="back-link">← 返回首页</a>
+
+    <div id="canvas-container">
+      <canvas id="canvas"></canvas>
+    </div>
+
+    <div class="panel">
+      <h2>🎮 Galacean Engine BVH 集成</h2>
+      
+      <div class="stat-row">
+        <span class="stat-label">FPS</span>
+        <span class="stat-value" id="fps">0</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">对象数量</span>
+        <span class="stat-value" id="objectCount">0</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">BVH 节点数</span>
+        <span class="stat-value" id="nodeCount">0</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">树深度</span>
+        <span class="stat-value" id="treeDepth">0</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">构建时间</span>
+        <span class="stat-value" id="buildTime">0 ms</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Raycast 时间</span>
+        <span class="stat-value" id="raycastTime">0 ms</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">命中状态</span>
+        <span class="stat-value">
+          <span id="hitStatus">-</span>
+          <span id="hitIndicator" class="hit-indicator"></span>
+        </span>
+      </div>
+
+      <div class="controls">
+        <div class="control-row">
+          <label>对象数量: <span id="cubeCountValue">100</span></label>
+          <input type="range" id="cubeCount" min="10" max="1000" value="100" step="10" />
+        </div>
+        
+        <div class="control-row">
+          <label>构建策略</label>
+          <select id="buildStrategy">
+            <option value="sah">SAH (Surface Area Heuristic)</option>
+            <option value="median">Median (中位数分割)</option>
+            <option value="equal">Equal (等量分割)</option>
+          </select>
+        </div>
+
+        <button id="rebuildBtn">重建场景</button>
+        <button id="toggleRaycast" class="secondary">开启连续 Raycast</button>
+      </div>
+    </div>
+
+    <div class="info-panel">
+      <p><strong>操作说明:</strong></p>
+      <p>• 鼠标左键拖动: 旋转视角</p>
+      <p>• 鼠标滚轮: 缩放</p>
+      <p>• 点击场景: 执行 Raycast</p>
+      <p>• 命中的对象会高亮显示</p>
+    </div>
+
+    <script type="module" src="../src/galacean-integration.ts"></script>
+  </body>
+</html>

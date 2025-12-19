@@ -104,29 +104,32 @@ export class BVHNode {
   }
 
   /**
-   * 更新包围盒（递归向上）
+   * 更新包围盒（迭代向上）
    */
   updateBounds(): void {
-    if (!this.isLeaf && this.left && this.right) {
-      // 直接计算合并后的包围盒，避免创建临时 AABB 对象
-      const minX = Math.min(this.left.bounds.min.x, this.right.bounds.min.x);
-      const minY = Math.min(this.left.bounds.min.y, this.right.bounds.min.y);
-      const minZ = Math.min(this.left.bounds.min.z, this.right.bounds.min.z);
-      const maxX = Math.max(this.left.bounds.max.x, this.right.bounds.max.x);
-      const maxY = Math.max(this.left.bounds.max.y, this.right.bounds.max.y);
-      const maxZ = Math.max(this.left.bounds.max.z, this.right.bounds.max.z);
+    // 使用迭代而非递归，避免栈溢出
+    let current: BVHNode | null = this;
 
-      this.bounds.min.x = minX;
-      this.bounds.min.y = minY;
-      this.bounds.min.z = minZ;
-      this.bounds.max.x = maxX;
-      this.bounds.max.y = maxY;
-      this.bounds.max.z = maxZ;
-    }
+    while (current) {
+      if (!current.isLeaf && current.left && current.right) {
+        // 直接计算合并后的包围盒，避免创建临时 AABB 对象
+        const minX = Math.min(current.left.bounds.min.x, current.right.bounds.min.x);
+        const minY = Math.min(current.left.bounds.min.y, current.right.bounds.min.y);
+        const minZ = Math.min(current.left.bounds.min.z, current.right.bounds.min.z);
+        const maxX = Math.max(current.left.bounds.max.x, current.right.bounds.max.x);
+        const maxY = Math.max(current.left.bounds.max.y, current.right.bounds.max.y);
+        const maxZ = Math.max(current.left.bounds.max.z, current.right.bounds.max.z);
 
-    // 向上更新父节点
-    if (this.parent) {
-      this.parent.updateBounds();
+        current.bounds.min.x = minX;
+        current.bounds.min.y = minY;
+        current.bounds.min.z = minZ;
+        current.bounds.max.x = maxX;
+        current.bounds.max.y = maxY;
+        current.bounds.max.z = maxZ;
+      }
+
+      // 向上移动到父节点
+      current = current.parent;
     }
   }
 
@@ -138,12 +141,18 @@ export class BVHNode {
   }
 
   /**
-   * 递归遍历节点
+   * 遍历节点（迭代方式）
    */
   traverse(callback: (node: BVHNode) => void): void {
-    callback(this);
-    if (this.left) this.left.traverse(callback);
-    if (this.right) this.right.traverse(callback);
+    // 使用迭代而非递归，避免栈溢出
+    const stack: BVHNode[] = [this];
+
+    while (stack.length > 0) {
+      const node = stack.pop()!;
+      callback(node);
+      if (node.right) stack.push(node.right);
+      if (node.left) stack.push(node.left);
+    }
   }
 
   /**

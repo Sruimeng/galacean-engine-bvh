@@ -65,79 +65,160 @@ BUILD_BVH(objects, strategy):
      RETURN direct_insertion(objects)
 
   3. SWITCH strategy:
-     - SAH:    buildSAH()
-     - Median: buildMedian()
-     - Equal:  buildEqual()
+     - SAH:    buildSAHIterative()
+     - Median: buildMedianIterative()
+     - Equal:  buildEqualIterative()
 
   4. RETURN optimized_tree
 ```
 
-### SAH Build (Optimal Static)
+### SAH Build (Iterative, Optimized)
 ```
-BUILD_SAH(objects):
-  1. CALCULATE unionAABB of all objects
-  2. SELECT longest axis (X/Y/Z)
-  3. FIND best split position via cost function
-  4. PARTITION objects by split plane
-  5. IF partition invalid -> fallback to Median
-  6. RECURSE left_objects, right_objects
+BUILD_SAH_ITERATIVE(objects):
+  1. INIT workStack = [{ objects }]
+  2. WHILE workStack.length > 0:
+     work = workStack.pop()
+     current = work.objects
+
+     3. IF current.length <= maxLeafSize:
+        FOR EACH obj: tree.insert(obj.bounds, obj.userData)
+        CONTINUE
+
+     4. CALCULATE unionAABB
+     5. FIND best split (32-bin, all 3 axes)
+     6. CALCULATE leafCost = TRIANGLE_INTERSECT_COST * count
+
+     7. IF cost >= leafCost AND count <= maxLeafSize * 2:
+        direct insert all, CONTINUE
+
+     8. PARTITION objects -> left[], right[]
+     9. IF invalid: median split fallback
+
+     10. PUSH right then left to workStack
 ```
 
-### Median Build (Dynamic)
+### Median Build (Iterative)
 ```
-BUILD_MEDIAN(objects):
-  1. CALCULATE unionAABB
-  2. SELECT longest axis
-  3. SORT objects by center on split axis
-  4. SPLIT at middle index
-  5. RECURSE left/right halves
+BUILD_MEDIAN_ITERATIVE(objects):
+  1. INIT workStack = [{ objects }]
+  2. WHILE workStack.length > 0:
+     work = workStack.pop()
+     current = work.objects
+
+     3. IF current.length <= maxLeafSize:
+        direct insert all, CONTINUE
+
+     4. CALCULATE unionAABB
+     5. SELECT longest axis
+     6. SORT objects by center on axis
+     7. SPLIT at middle index
+     8. PUSH right then left to workStack
 ```
 
-### Insertion (Runtime Updates)
+### Insertion (Runtime Updates, Iterative)
 ```
 INSERT(bounds, userData):
   1. IF tree empty -> create root leaf
-  2. FIND best leaf (min growth)
+  2. FIND best leaf (min growth, iterative)
   3. IF leaf full AND depth < maxDepth:
      SPLIT leaf -> internal node
   4. ELSE:
-     ADD to leaf or continue recursion
-  5. UPDATE parent bounds (refit)
+     ADD to leaf or continue iterative search
+  5. UPDATE parent bounds (iterative refit)
   6. RETURN objectId
 ```
 
 ## Query Operations
 
-### Raycast (Optimized Traversal)
+### Raycast (Iterative, Stack-Safe)
 ```
 RAYCAST(ray, maxDistance):
   1. INIT results = []
-  2. RECURSIVE_TRAVERSE(root, ray):
-     - IF leaf: test intersection -> add to results
-     - IF internal: early exit if ray misses bounds
-     - VISIT left, then right (depth-first)
-  3. SORT results by distance
-  4. RETURN results
+  2. INIT stack = [root]
+  3. WHILE stack.length > 0:
+     node = stack.pop()
+
+     IF node.isLeaf:
+        IF intersection valid: add to results
+        CONTINUE
+
+     IF !AABB.intersectRay(ray): CONTINUE
+
+     IF node.right: stack.push(node.right)
+     IF node.left: stack.push(node.left)
+
+  4. SORT results by distance
+  5. RETURN results
 ```
 
-### Range Query (Sphere/AABB)
+### Range Query (Sphere/AABB, Iterative)
 ```
 QUERY_RANGE(center, radius):
   1. CREATE queryAABB from center/radius
-  2. RECURSIVE_TRAVERSE(root, queryAABB):
-     - IF leaf: check if intersects -> collect userData
-     - IF internal: early exit if no overlap
-  3. RETURN collected_data
+  2. INIT stack = [root]
+  3. WHILE stack.length > 0:
+     node = stack.pop()
+
+     IF node.isLeaf:
+        IF intersects: collect userData
+        CONTINUE
+
+     IF !AABB.intersectAABB(queryAABB): CONTINUE
+
+     IF node.right: stack.push(node.right)
+     IF node.left: stack.push(node.left)
+
+  4. RETURN collected_data
 ```
 
-### Insertion Sort
+### Nearest Neighbor (Iterative, Priority Queue)
 ```
-INSERT_SORT_UP(node):
-  WHILE node.parent:
-    IF growth(parent.left) > growth(parent.right):
-       SWAP children
-    UPDATE parent bounds
-    node = parent
+FIND_NEAREST(position, maxDistance):
+  1. INIT candidates = []
+  2. INIT stack = [root]
+  3. WHILE stack.length > 0:
+     node = stack.pop()
+     distance = getDistanceToBounding(position, node.bounds)
+
+     IF maxDistance AND distance > maxDistance: CONTINUE
+
+     IF node.isLeaf:
+        candidates.push({ distance, data: node.userData })
+        CONTINUE
+
+     // Prioritize closer child
+     leftDist = getDistanceToBounding(position, node.left.bounds)
+     rightDist = getDistanceToBounding(position, node.right.bounds)
+
+     IF leftDist <= rightDist:
+        stack.push(node.right)  // Farther first
+        stack.push(node.left)   // Closer last
+     ELSE:
+        stack.push(node.left)
+        stack.push(node.right)
+
+  4. SORT candidates by distance
+  5. RETURN candidates[0].data
+```
+
+### Refit (Iterative, Post-Order)
+```
+REFIT():
+  1. COLLECT all nodes by depth (deepest first)
+  2. FOR EACH node IN sorted_nodes:
+     IF node.isLeaf: CONTINUE
+     IF !node.left: CONTINUE
+
+     // Direct bounds calculation, no temp objects
+     minX = min(node.left.bounds.min.x, node.right.bounds.min.x)
+     minY = min(node.left.bounds.min.y, node.right.bounds.min.y)
+     minZ = min(node.left.bounds.min.z, node.right.bounds.min.z)
+     maxX = max(node.left.bounds.max.x, node.right.bounds.max.x)
+     maxY = max(node.left.bounds.max.y, node.right.bounds.max.y)
+     maxZ = max(node.left.bounds.max.z, node.right.bounds.max.z)
+
+     node.bounds.min.set(minX, minY, minZ)
+     node.bounds.max.set(maxX, maxY, maxZ)
 ```
 
 ## Error Handling & Validation
@@ -194,15 +275,19 @@ function boundsEqual(a: BoundingBox, b: BoundingBox): boolean {
 - ❌ **DO NOT** mutate input parameters
 - ❌ **DO NOT** use `any` in public APIs
 - ❌ **DO NOT** ignore floating-point precision
-- ❌ **DO NOT** skip null checks in recursive functions
+- ❌ **DO NOT** skip null checks in iterative loops
 - ❌ **DO NOT** use left-handed coordinates
 - ❌ **DO NOT** assume bounds are valid
 - ❌ **DO NOT** use tabs for indentation
 - ❌ **DO NOT** double quotes unless template literals needed
 - ❌ **DO NOT** skip epsilon in comparisons
 - ❌ **DO NOT** rebuild tree for small updates (use refit)
-- ❌ **DO NOT** exceed maxDepth recursion
+- ❌ **DO NOT** exceed maxDepth limit
 - ❌ **DO NOT** ignore empty partitions in SAH
+- ❌ **DO NOT** use recursive algorithms (always iterative)
+- ❌ **DO NOT** create temporary AABB objects in hot paths
+- ❌ **DO NOT** ignore SAH constants (TRIANGLE_INTERSECT_COST=1.25, TRAVERSAL_COST=1.0)
+- ❌ **DO NOT** use fixed-size arrays for stack (use dynamic)
 
 ### Build Constraints
 - **Target**: ES5 (for browser compatibility)

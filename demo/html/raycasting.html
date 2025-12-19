@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BVH Raycasting Demo - Galacean Engine</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #1a1a2e;
+      color: #eee;
+      overflow: hidden;
+    }
+
+    #canvas-container {
+      width: 100vw;
+      height: 100vh;
+      position: relative;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    .controls {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      background: rgba(0, 0, 0, 0.8);
+      padding: 20px;
+      border-radius: 10px;
+      min-width: 280px;
+      z-index: 100;
+    }
+
+    .controls h2 {
+      margin-bottom: 15px;
+      font-size: 1.2em;
+      color: #4fc3f7;
+    }
+
+    .control-group {
+      margin-bottom: 15px;
+    }
+
+    .control-group label {
+      display: block;
+      margin-bottom: 5px;
+      font-size: 0.9em;
+      color: #aaa;
+    }
+
+    .control-group input[type="range"] {
+      width: 100%;
+      margin-bottom: 5px;
+    }
+
+    .control-group .value {
+      font-size: 0.85em;
+      color: #4fc3f7;
+    }
+
+    .control-group select {
+      width: 100%;
+      padding: 8px;
+      border-radius: 5px;
+      border: none;
+      background: #333;
+      color: #fff;
+    }
+
+    .stats {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      background: rgba(0, 0, 0, 0.8);
+      padding: 20px;
+      border-radius: 10px;
+      min-width: 200px;
+      z-index: 100;
+    }
+
+    .stats h3 {
+      margin-bottom: 10px;
+      font-size: 1em;
+      color: #4fc3f7;
+    }
+
+    .stat-item {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 8px;
+      font-size: 0.9em;
+    }
+
+    .stat-item .label {
+      color: #aaa;
+    }
+
+    .stat-item .value {
+      color: #4fc3f7;
+      font-weight: bold;
+    }
+
+    .btn {
+      width: 100%;
+      padding: 10px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 0.9em;
+      margin-top: 10px;
+      transition: background 0.3s;
+    }
+
+    .btn-primary {
+      background: #4fc3f7;
+      color: #1a1a2e;
+    }
+
+    .btn-primary:hover {
+      background: #29b6f6;
+    }
+
+    .btn-secondary {
+      background: #555;
+      color: #fff;
+    }
+
+    .btn-secondary:hover {
+      background: #666;
+    }
+
+    .info {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      background: rgba(0, 0, 0, 0.8);
+      padding: 15px;
+      border-radius: 10px;
+      font-size: 0.85em;
+      color: #aaa;
+      max-width: 400px;
+    }
+
+    .info h4 {
+      color: #4fc3f7;
+      margin-bottom: 8px;
+    }
+
+    .hit-indicator {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      background: rgba(0, 0, 0, 0.8);
+      padding: 15px 25px;
+      border-radius: 10px;
+      font-size: 1.1em;
+    }
+
+    .hit-indicator.hit {
+      color: #4caf50;
+    }
+
+    .hit-indicator.miss {
+      color: #f44336;
+    }
+  </style>
+</head>
+<body>
+  <div id="canvas-container">
+    <canvas id="canvas"></canvas>
+  </div>
+
+  <div class="controls">
+    <h2>🎯 光线投射控制</h2>
+    
+    <div class="control-group">
+      <label>对象数量</label>
+      <input type="range" id="objectCount" min="100" max="10000" value="1000" step="100">
+      <span class="value" id="objectCountValue">1000</span>
+    </div>
+
+    <div class="control-group">
+      <label>光线数量 (每帧)</label>
+      <input type="range" id="rayCount" min="1" max="500" value="100" step="1">
+      <span class="value" id="rayCountValue">100</span>
+    </div>
+
+    <div class="control-group">
+      <label>构建策略</label>
+      <select id="buildStrategy">
+        <option value="sah">SAH (最优查询)</option>
+        <option value="median">Median (均衡)</option>
+        <option value="equal">Equal (快速构建)</option>
+      </select>
+    </div>
+
+    <button class="btn btn-primary" id="rebuildBtn">重建 BVH</button>
+    <button class="btn btn-secondary" id="toggleAnimBtn">暂停动画</button>
+  </div>
+
+  <div class="stats">
+    <h3>📊 性能统计</h3>
+    <div class="stat-item">
+      <span class="label">FPS</span>
+      <span class="value" id="fps">0</span>
+    </div>
+    <div class="stat-item">
+      <span class="label">构建时间</span>
+      <span class="value" id="buildTime">0 ms</span>
+    </div>
+    <div class="stat-item">
+      <span class="label">查询时间</span>
+      <span class="value" id="queryTime">0 ms</span>
+    </div>
+    <div class="stat-item">
+      <span class="label">命中数</span>
+      <span class="value" id="hitCount">0</span>
+    </div>
+    <div class="stat-item">
+      <span class="label">节点数</span>
+      <span class="value" id="nodeCount">0</span>
+    </div>
+    <div class="stat-item">
+      <span class="label">树深度</span>
+      <span class="value" id="treeDepth">0</span>
+    </div>
+  </div>
+
+  <div class="info">
+    <h4>使用说明</h4>
+    <p>
+      此演示展示了 BVH 加速的光线投射查询。场景中包含大量随机分布的包围盒，
+      每帧发射多条光线进行碰撞检测。BVH 结构可以显著加速查询过程。
+    </p>
+  </div>
+
+  <div class="hit-indicator" id="hitIndicator">
+    命中: <span id="hitRate">0%</span>
+  </div>
+
+  <script type="module" src="../src/raycasting.ts"></script>
+</body>
+</html>

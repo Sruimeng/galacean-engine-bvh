@@ -78,8 +78,8 @@ export class BVHTree {
         // 创建新节点来容纳多个对象
         this.splitLeaf(targetLeaf, bounds, userData, objectId);
       } else {
-        // 继续向下搜索
-        this.insertRecursive(this.root, bounds, userData, objectId, 0);
+        // 继续向下搜索（使用迭代方式）
+        this.insertIterative(this.root, bounds, userData, objectId, 0);
       }
     }
 
@@ -184,7 +184,7 @@ export class BVHTree {
 
     if (!this.root) return results;
 
-    this.raycastRecursive(this.root, ray, results, maxDistance);
+    this.raycastIterative(this.root, ray, results, maxDistance);
 
     // 按距离排序
     results.sort((a, b) => a.distance - b.distance);
@@ -203,7 +203,7 @@ export class BVHTree {
     if (!this.root) return results;
 
     const rangeAABB = AABB.fromCenterSize(center, new Vector3(radius * 2, radius * 2, radius * 2));
-    this.queryRangeRecursive(this.root, rangeAABB, results);
+    this.queryRangeIterative(this.root, rangeAABB, results);
 
     return results;
   }
@@ -218,7 +218,7 @@ export class BVHTree {
     if (!this.root) return null;
 
     const candidates: { distance: number; data: any }[] = [];
-    this.findNearestRecursive(this.root, position, candidates, maxDistance);
+    this.findNearestIterative(this.root, position, candidates, maxDistance);
 
     if (candidates.length === 0) return null;
 
@@ -235,29 +235,41 @@ export class BVHTree {
     const results: any[] = [];
     if (!this.root) return results;
 
-    this.intersectBoundsRecursive(this.root, bounds, results);
+    this.intersectBoundsIterative(this.root, bounds, results);
     return results;
   }
 
   /**
-   * 重拟合 - 高效更新包围盒而不重建树
+   * 重拟合 - 高效更新包围盒而不重建树（迭代方式）
    */
   refit(): void {
     if (!this.root) return;
 
-    const updateNode = (node: BVHNode): void => {
-      if (node.isLeaf) return;
+    // 使用后序遍历（先处理子节点，再处理父节点）
+    // 收集所有节点并按深度排序
+    const nodes: BVHNode[] = [];
+    const stack: BVHNode[] = [this.root];
+
+    while (stack.length > 0) {
+      const node = stack.pop()!;
+      nodes.push(node);
+      if (node.left) stack.push(node.left);
+      if (node.right) stack.push(node.right);
+    }
+
+    // 按深度降序排序（先处理深层节点）
+    nodes.sort((a, b) => b.depth - a.depth);
+
+    // 更新每个非叶子节点的包围盒
+    for (const node of nodes) {
+      if (node.isLeaf) continue;
+      if (!node.left) continue;
 
       const leftAABB = AABB.fromBoundingBox(node.left.bounds);
       const rightAABB = node.right ? AABB.fromBoundingBox(node.right.bounds) : leftAABB;
       const union = node.right ? leftAABB.union(rightAABB) : leftAABB;
       node.bounds = union.getBounds();
-
-      if (node.left) updateNode(node.left);
-      if (node.right) updateNode(node.right);
-    };
-
-    updateNode(this.root);
+    }
   }
 
   /**
@@ -289,7 +301,7 @@ export class BVHTree {
   }
 
   /**
-   * 获取树的统计信息
+   * 获取树的统计信息（迭代方式）
    */
   getStats(): BVHStats {
     const stats: BVHStats = {
@@ -303,7 +315,11 @@ export class BVHTree {
 
     if (!this.root) return stats;
 
-    const traverse = (node: BVHNode, depth: number = 0): void => {
+    // 使用迭代方式遍历
+    const stack: { node: BVHNode; depth: number }[] = [{ node: this.root, depth: 0 }];
+
+    while (stack.length > 0) {
+      const { node, depth } = stack.pop()!;
       stats.nodeCount++;
       stats.maxDepth = Math.max(stats.maxDepth, depth);
 
@@ -311,11 +327,9 @@ export class BVHTree {
         stats.leafCount++;
       }
 
-      if (node.left) traverse(node.left, depth + 1);
-      if (node.right) traverse(node.right, depth + 1);
-    };
-
-    traverse(this.root);
+      if (node.left) stack.push({ node: node.left, depth: depth + 1 });
+      if (node.right) stack.push({ node: node.right, depth: depth + 1 });
+    }
 
     // 计算平衡因子
     const leftDepth = this.getTreeDepth(this.root?.left);
@@ -331,20 +345,27 @@ export class BVHTree {
   }
 
   /**
-   * 验证树的状态是否健康
+   * 验证树的状态是否健康（迭代方式）
    * @returns 验证结果，包含是否有效和错误信息
    */
   validate(): { valid: boolean; errors: string[] } {
     const errors: string[] = [];
 
     if (!this.root) {
-      return { valid: this._count === 0, errors: this._count !== 0 ? ['根节点为空但计数不为零'] : [] };
+      return {
+        valid: this._count === 0,
+        errors: this._count !== 0 ? ['根节点为空但计数不为零'] : [],
+      };
     }
 
     const seen = new Set<number>();
 
-    const validateNode = (node: BVHNode, depth: number): void => {
-      if (!node) return;
+    // 使用迭代方式验证
+    const stack: { node: BVHNode; depth: number }[] = [{ node: this.root, depth: 0 }];
+
+    while (stack.length > 0) {
+      const { node, depth } = stack.pop()!;
+      if (!node) continue;
 
       // 检查深度一致性
       if (node.depth !== depth) {
@@ -376,18 +397,16 @@ export class BVHTree {
           if (node.left.parent !== node) {
             errors.push('左子节点的父引用不正确');
           }
-          validateNode(node.left, depth + 1);
+          stack.push({ node: node.left, depth: depth + 1 });
         }
         if (node.right) {
           if (node.right.parent !== node) {
             errors.push('右子节点的父引用不正确');
           }
-          validateNode(node.right, depth + 1);
+          stack.push({ node: node.right, depth: depth + 1 });
         }
       }
-    };
-
-    validateNode(this.root, 0);
+    }
 
     // 验证计数
     if (seen.size !== this._count) {
@@ -400,38 +419,46 @@ export class BVHTree {
   // ==================== 私有辅助方法 ====================
 
   private findBestLeaf(node: BVHNode, bounds: BoundingBox): BVHNode {
-    if (node.isLeaf) return node;
+    // 使用迭代而非递归，避免栈溢出
+    let current = node;
 
-    if (!node.left) return node;
+    while (!current.isLeaf) {
+      if (!current.left) break;
 
-    const leftGrow = this.calculateBoundsGrowth(node.left.bounds, bounds);
-    const rightGrow = node.right ? this.calculateBoundsGrowth(node.right.bounds, bounds) : Infinity;
+      const leftGrow = this.calculateBoundsGrowth(current.left.bounds, bounds);
+      const rightGrow = current.right
+        ? this.calculateBoundsGrowth(current.right.bounds, bounds)
+        : Infinity;
 
-    if (leftGrow < rightGrow) {
-      return this.findBestLeaf(node.left, bounds);
-    } else if (node.right) {
-      return this.findBestLeaf(node.right, bounds);
+      if (leftGrow < rightGrow) {
+        current = current.left;
+      } else if (current.right) {
+        current = current.right;
+      } else {
+        break;
+      }
     }
 
-    return node;
+    return current;
   }
 
   private shouldSplit(node: BVHNode): boolean {
     // 简单的分裂条件：深度和对象数
     if (node.depth >= this.maxDepth - 1) return false;
 
-    // 估算叶子节点中的对象数
+    // 使用迭代方式估算叶子节点中的对象数
     let leafCount = 0;
-    const countLeafs = (n: BVHNode): void => {
+    const stack: BVHNode[] = [node];
+
+    while (stack.length > 0) {
+      const n = stack.pop()!;
       if (n.isLeaf) {
-        // 如果已经有对象或正在分裂
         if (n.objectId >= 0) leafCount++;
       } else {
-        if (n.left) countLeafs(n.left);
-        if (n.right) countLeafs(n.right);
+        if (n.left) stack.push(n.left);
+        if (n.right) stack.push(n.right);
       }
-    };
-    countLeafs(node);
+    }
 
     return leafCount >= this.maxLeafSize;
   }
@@ -503,59 +530,68 @@ export class BVHTree {
     leaf.updateBounds();
   }
 
-  private insertRecursive(
-    node: BVHNode,
+  private insertIterative(
+    startNode: BVHNode,
     bounds: BoundingBox,
     userData: unknown,
     objectId: number,
-    depth: number,
+    startDepth: number,
   ): void {
-    if (depth >= this.maxDepth) {
-      // 达到最大深度时，强制在当前节点进行分裂
+    // 使用迭代而非递归，避免栈溢出
+    let node = startNode;
+    let depth = startDepth;
+
+    while (true) {
+      if (depth >= this.maxDepth) {
+        // 达到最大深度时，强制在当前节点进行分裂
+        if (node.isLeaf) {
+          this.splitLeaf(node, bounds, userData, objectId);
+        } else {
+          // 如果是内部节点，选择增长最小的子树插入
+          if (node.left && node.right) {
+            const leftGrow = this.calculateBoundsGrowth(node.left.bounds, bounds);
+            const rightGrow = this.calculateBoundsGrowth(node.right.bounds, bounds);
+            if (leftGrow <= rightGrow) {
+              this.splitLeaf(node.left, bounds, userData, objectId);
+            } else {
+              this.splitLeaf(node.right, bounds, userData, objectId);
+            }
+          } else if (node.left) {
+            this.splitLeaf(node.left, bounds, userData, objectId);
+          }
+        }
+        return;
+      }
+
       if (node.isLeaf) {
         this.splitLeaf(node, bounds, userData, objectId);
-      } else {
-        // 如果是内部节点，选择增长最小的子树插入
-        if (node.left && node.right) {
-          const leftGrow = this.calculateBoundsGrowth(node.left.bounds, bounds);
-          const rightGrow = this.calculateBoundsGrowth(node.right.bounds, bounds);
-          if (leftGrow <= rightGrow) {
-            this.splitLeaf(node.left, bounds, userData, objectId);
-          } else {
-            this.splitLeaf(node.right, bounds, userData, objectId);
-          }
-        } else if (node.left) {
-          this.splitLeaf(node.left, bounds, userData, objectId);
-        }
+        return;
       }
-      return;
-    }
 
-    if (node.isLeaf) {
-      this.splitLeaf(node, bounds, userData, objectId);
-      return;
-    }
+      // 非叶子节点，选择增长最小的子树继续
+      if (!node.left) {
+        // 异常情况：非叶子节点无左子节点，直接创建
+        node.left = BVHNode.createLeaf(bounds, userData, objectId, depth);
+        node.left.parent = node;
+        this._objectMap.set(objectId, node.left);
+        node.updateBounds();
+        return;
+      }
 
-    // 非叶子节点，选择增长最小的子树递归插入
-    if (!node.left) {
-      // 异常情况：非叶子节点无左子节点，直接创建
-      node.left = BVHNode.createLeaf(bounds, userData, objectId, depth);
-      node.left.parent = node;
-      this._objectMap.set(objectId, node.left);
-      node.updateBounds();
-      return;
-    }
+      const leftGrow = this.calculateBoundsGrowth(node.left.bounds, bounds);
+      const rightGrow = node.right
+        ? this.calculateBoundsGrowth(node.right.bounds, bounds)
+        : Infinity;
 
-    const leftGrow = this.calculateBoundsGrowth(node.left.bounds, bounds);
-    const rightGrow = node.right ? this.calculateBoundsGrowth(node.right.bounds, bounds) : Infinity;
-
-    if (leftGrow <= rightGrow) {
-      this.insertRecursive(node.left, bounds, userData, objectId, depth + 1);
-    } else if (node.right) {
-      this.insertRecursive(node.right, bounds, userData, objectId, depth + 1);
-    } else {
-      // 无右子节点，在左子节点继续
-      this.insertRecursive(node.left, bounds, userData, objectId, depth + 1);
+      if (leftGrow <= rightGrow) {
+        node = node.left;
+      } else if (node.right) {
+        node = node.right;
+      } else {
+        // 无右子节点，在左子节点继续
+        node = node.left;
+      }
+      depth++;
     }
   }
 
@@ -601,116 +637,174 @@ export class BVHTree {
     return 2; // Z
   }
 
-  private raycastRecursive(
-    node: BVHNode,
+  private raycastIterative(
+    startNode: BVHNode,
     ray: Ray,
     results: CollisionResult[],
     maxDistance?: number,
   ): void {
-    if (node.isLeaf) {
-      if (node.objectId < 0) return;
+    // 使用迭代方式进行光线投射
+    const stack: BVHNode[] = [startNode];
 
-      const aabb = AABB.fromBoundingBox(node.bounds);
-      const distance = aabb.intersectRayDistance(ray);
+    while (stack.length > 0) {
+      const node = stack.pop()!;
 
-      if (distance !== null && (maxDistance === undefined || distance <= maxDistance)) {
-        const point = ray.getPoint(distance);
-        // 简化的法线计算（实际可以根据面方向计算）
-        const normal = this.calculateNormal(node.bounds, point);
+      if (node.isLeaf) {
+        if (node.objectId < 0) continue;
 
-        results.push(new CollisionResult(node.userData, distance, point, normal, node));
+        const aabb = AABB.fromBoundingBox(node.bounds);
+        const distance = aabb.intersectRayDistance(ray);
+
+        if (distance !== null && (maxDistance === undefined || distance <= maxDistance)) {
+          const point = ray.getPoint(distance);
+          const normal = this.calculateNormal(node.bounds, point);
+          results.push(new CollisionResult(node.userData, distance, point, normal, node));
+        }
+        continue;
       }
-      return;
+
+      // 剔除测试 - 如果包围盒不相交，跳过整个子树
+      const nodeAABB = AABB.fromBoundingBox(node.bounds);
+      const nodeDistance = nodeAABB.intersectRayDistance(ray);
+      if (nodeDistance === null) continue;
+
+      // 如果内部节点的最近距离已经超过 maxDistance，跳过
+      if (maxDistance !== undefined && nodeDistance > maxDistance) continue;
+
+      // 将子节点加入栈（按距离排序，近的后入栈先处理）
+      const left = node.left;
+      const right = node.right;
+
+      if (left && right) {
+        const leftAABB = AABB.fromBoundingBox(left.bounds);
+        const rightAABB = AABB.fromBoundingBox(right.bounds);
+        const leftDist = leftAABB.intersectRayDistance(ray);
+        const rightDist = rightAABB.intersectRayDistance(ray);
+
+        // 按距离排序，近的后入栈（先处理）
+        if (leftDist !== null && rightDist !== null) {
+          if (leftDist <= rightDist) {
+            stack.push(right);
+            stack.push(left);
+          } else {
+            stack.push(left);
+            stack.push(right);
+          }
+        } else if (leftDist !== null) {
+          stack.push(left);
+        } else if (rightDist !== null) {
+          stack.push(right);
+        }
+      } else if (left) {
+        stack.push(left);
+      } else if (right) {
+        stack.push(right);
+      }
     }
-
-    // 剔除测试 - 如果包围盒不相交，跳过整个子树
-    const aabb = AABB.fromBoundingBox(node.bounds);
-    if (!aabb.intersectRay(ray)) return;
-
-    // 递归子节点
-    if (node.left) this.raycastRecursive(node.left, ray, results, maxDistance);
-    if (node.right) this.raycastRecursive(node.right, ray, results, maxDistance);
   }
 
-  private queryRangeRecursive(node: BVHNode, range: AABB, results: unknown[]): void {
-    if (node.isLeaf) {
-      if (node.objectId >= 0 && node.userData !== undefined) {
-        results.push(node.userData);
+  private queryRangeIterative(startNode: BVHNode, range: AABB, results: unknown[]): void {
+    // 使用迭代方式进行范围查询
+    const stack: BVHNode[] = [startNode];
+
+    while (stack.length > 0) {
+      const node = stack.pop()!;
+
+      if (node.isLeaf) {
+        if (node.objectId >= 0 && node.userData !== undefined) {
+          results.push(node.userData);
+        }
+        continue;
       }
-      return;
+
+      // 剔除测试
+      const nodeAABB = AABB.fromBoundingBox(node.bounds);
+      if (!nodeAABB.intersectAABB(range)) continue;
+
+      if (node.right) stack.push(node.right);
+      if (node.left) stack.push(node.left);
     }
-
-    // 剔除测试
-    const nodeAABB = AABB.fromBoundingBox(node.bounds);
-    if (!nodeAABB.intersectAABB(range)) return;
-
-    if (node.left) this.queryRangeRecursive(node.left, range, results);
-    if (node.right) this.queryRangeRecursive(node.right, range, results);
   }
 
-  private findNearestRecursive(
-    node: BVHNode,
+  private findNearestIterative(
+    startNode: BVHNode,
     position: Vector3,
     candidates: { distance: number; data: unknown }[],
     maxDistance?: number,
   ): void {
-    // 计算位置到包围盒的最近点距离
-    const minDistance = this.getDistanceToBounding(position, node.bounds);
+    // 使用迭代方式查找最近邻
+    const stack: BVHNode[] = [startNode];
 
-    // 早期剪枝
-    if (maxDistance !== undefined && minDistance > maxDistance) return;
+    while (stack.length > 0) {
+      const node = stack.pop()!;
 
-    if (node.isLeaf) {
-      if (node.objectId < 0 || node.userData === undefined) return;
+      // 计算位置到包围盒的最近点距离
+      const minDistance = this.getDistanceToBounding(position, node.bounds);
 
-      if (maxDistance === undefined || minDistance <= maxDistance) {
-        candidates.push({ distance: minDistance, data: node.userData });
+      // 早期剪枝
+      if (maxDistance !== undefined && minDistance > maxDistance) continue;
+
+      if (node.isLeaf) {
+        if (node.objectId < 0 || node.userData === undefined) continue;
+
+        if (maxDistance === undefined || minDistance <= maxDistance) {
+          candidates.push({ distance: minDistance, data: node.userData });
+        }
+        continue;
       }
-      return;
-    }
 
-    // 优先搜索较近的子节点
-    const left = node.left;
-    const right = node.right;
+      // 将子节点加入栈（按距离排序，近的后入栈先处理）
+      const left = node.left;
+      const right = node.right;
 
-    if (left && right) {
-      const leftDist = this.getDistanceToBounding(position, left.bounds);
-      const rightDist = this.getDistanceToBounding(position, right.bounds);
+      if (left && right) {
+        const leftDist = this.getDistanceToBounding(position, left.bounds);
+        const rightDist = this.getDistanceToBounding(position, right.bounds);
 
-      // 按距离排序搜索，可以更快找到最近的对象
-      if (leftDist <= rightDist) {
-        this.findNearestRecursive(left, position, candidates, maxDistance);
-        this.findNearestRecursive(right, position, candidates, maxDistance);
-      } else {
-        this.findNearestRecursive(right, position, candidates, maxDistance);
-        this.findNearestRecursive(left, position, candidates, maxDistance);
+        if (leftDist <= rightDist) {
+          stack.push(right);
+          stack.push(left);
+        } else {
+          stack.push(left);
+          stack.push(right);
+        }
+      } else if (left) {
+        stack.push(left);
+      } else if (right) {
+        stack.push(right);
       }
-    } else if (left) {
-      this.findNearestRecursive(left, position, candidates, maxDistance);
-    } else if (right) {
-      this.findNearestRecursive(right, position, candidates, maxDistance);
     }
   }
 
-  private intersectBoundsRecursive(node: BVHNode, bounds: BoundingBox, results: unknown[]): void {
-    if (node.isLeaf) {
-      if (node.objectId >= 0 && node.userData !== undefined) {
-        const nodeAABB = AABB.fromBoundingBox(node.bounds);
-        const checkAABB = AABB.fromBoundingBox(bounds);
-        if (nodeAABB.intersectAABB(checkAABB)) {
-          results.push(node.userData);
-        }
-      }
-      return;
-    }
-
-    // 剔除测试
-    const nodeAABB = AABB.fromBoundingBox(node.bounds);
+  private intersectBoundsIterative(
+    startNode: BVHNode,
+    bounds: BoundingBox,
+    results: unknown[],
+  ): void {
+    // 使用迭代方式进行包围盒相交检测
     const checkAABB = AABB.fromBoundingBox(bounds);
-    if (!nodeAABB.intersectAABB(checkAABB)) return;
+    const stack: BVHNode[] = [startNode];
 
-    if (node.left) this.intersectBoundsRecursive(node.left, bounds, results);
-    if (node.right) this.intersectBoundsRecursive(node.right, bounds, results);
+    while (stack.length > 0) {
+      const node = stack.pop()!;
+
+      if (node.isLeaf) {
+        if (node.objectId >= 0 && node.userData !== undefined) {
+          const nodeAABB = AABB.fromBoundingBox(node.bounds);
+          if (nodeAABB.intersectAABB(checkAABB)) {
+            results.push(node.userData);
+          }
+        }
+        continue;
+      }
+
+      // 剔除测试
+      const nodeAABB = AABB.fromBoundingBox(node.bounds);
+      if (!nodeAABB.intersectAABB(checkAABB)) continue;
+
+      if (node.right) stack.push(node.right);
+      if (node.left) stack.push(node.left);
+    }
   }
 
   private getDistanceToBounding(position: Vector3, bounds: BoundingBox): number {
@@ -744,9 +838,22 @@ export class BVHTree {
 
   private getTreeDepth(node: BVHNode | null): number {
     if (!node) return 0;
-    if (node.isLeaf) return 1;
-    const leftDepth = node.left ? this.getTreeDepth(node.left) : 0;
-    const rightDepth = node.right ? this.getTreeDepth(node.right) : 0;
-    return 1 + Math.max(leftDepth, rightDepth);
+
+    // 使用迭代方式计算树深度，避免栈溢出
+    let maxDepth = 0;
+    const stack: { node: BVHNode; depth: number }[] = [{ node, depth: 1 }];
+
+    while (stack.length > 0) {
+      const { node: current, depth } = stack.pop()!;
+
+      if (current.isLeaf) {
+        maxDepth = Math.max(maxDepth, depth);
+      } else {
+        if (current.left) stack.push({ node: current.left, depth: depth + 1 });
+        if (current.right) stack.push({ node: current.right, depth: depth + 1 });
+      }
+    }
+
+    return maxDepth;
   }
 }

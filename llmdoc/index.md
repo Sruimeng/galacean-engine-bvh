@@ -1,7 +1,7 @@
 ---
 id: index
 type: guide
-related_ids: [constitution, tech-stack, data-models, system-overview, shared-utilities]
+related_ids: [constitution, tech-stack, data-models, system-overview, shared-utilities, performance-optimization]
 ---
 
 # Galacean Engine BVH - Documentation Index
@@ -17,6 +17,7 @@ related_ids: [constitution, tech-stack, data-models, system-overview, shared-uti
 | **[data-models.md](reference/data-models.md)** | reference | Interface definitions, class structures, type contracts |
 | **[system-overview.md](architecture/system-overview.md)** | architecture | System flow, component architecture, data flow diagrams |
 | **[shared-utilities.md](reference/shared-utilities.md)** | reference | Math utilities, geometry types, performance tools |
+| **[performance-optimization.md](reference/performance-optimization.md)** | reference | **NEW** - Iterative algorithms, SAH optimization, memory management |
 | **[doc-standard.md](guides/doc-standard.md)** | guide | Documentation format specifications |
 
 ## 🚀 Navigation Guide
@@ -26,9 +27,10 @@ related_ids: [constitution, tech-stack, data-models, system-overview, shared-uti
 **Reading Order:**
 1. **constitution.md** - Understand domain rules (Right-handed Y-up, epsilon precision)
 2. **data-models.md** - Learn types (BVHNode, BVHTree, BoundingBox)
-3. **system-overview.md** - Grasp architecture (Query/Core/Builder modules)
-4. **tech-stack.md** - Review build pipeline (Rollup + SWC → ES5 ESM)
-5. **shared-utilities.md** - Discover math helpers (unionBounds, getLongestAxis)
+3. **performance-optimization.md** - **NEW** - Iterative algorithms, SAH 32-bin optimization
+4. **system-overview.md** - Grasp architecture (Query/Core/Builder modules)
+5. **tech-stack.md** - Review build pipeline (Rollup + Vite → ES5 ESM)
+6. **shared-utilities.md** - Discover math helpers (unionBounds, getLongestAxis)
 
 ## 🎯 Quick Start
 
@@ -44,7 +46,7 @@ objects.forEach(obj => {
   tree.insert(obj.bounds, obj.userData);
 });
 
-// 4. Query with raycast
+// 4. Query with raycast (iterative, stack-safe)
 const hits = tree.raycast(cameraRay);
 ```
 
@@ -54,7 +56,9 @@ const hits = tree.raycast(cameraRay);
 - **Precision:** Epsilon = 1e-10 for all comparisons
 - **Build Target:** ES5 via SWC (for browser compatibility)
 - **Module Format:** ESM only (no CommonJS)
+- **Algorithm Style:** Iterative (stack-based) for all recursive operations
+- **SAH Optimization:** 32-bin bucketing, multi-axis evaluation
 
 ---
 
-*Last Updated: 2025-12-18 | Current Version: 1.6.11*
+*Last Updated: 2025-12-19 | Current Version: 1.7.0*

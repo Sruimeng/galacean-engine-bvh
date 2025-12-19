@@ -83,12 +83,11 @@ class BVHNode {
   get childCount(): number   // 获取子节点数量
 
   // Methods
-  isLeafNode(): boolean        // 是叶子节点的别名（兼容性）
-  getDepth(): number           // 获取节点深度
+  getDepth(): number           // 获取节点深度（迭代方式）
   resetAsInternal(): void      // 重置为非叶子节点（用于拆分）
-  updateBounds(): void         // 更新包围盒（递归向上）
+  updateBounds(): void         // 更新包围盒（迭代向上，避免栈溢出）
   toString(): string           // 转换为字符串表示
-  traverse(callback: (node: BVHNode) => void): void  // 递归遍历节点
+  traverse(callback: (node: BVHNode) => void): void  // 迭代遍历节点（栈安全）
   estimateMemory(): number     // 计算节点的内存使用
 
   // Static Factories
@@ -124,10 +123,10 @@ class BVHTree {
   intersectBounds(bounds: BoundingBox): any[]
 
   // Optimization & Maintenance
-  refit(): void                                    // 高效更新包围盒
+  refit(): void                                    // 高效更新包围盒（迭代方式）
   rebuild(strategy?: BVHBuildStrategy): void       // 重建整个树
-  getStats(): BVHStats                             // 获取统计信息
-  validate(): boolean                              // 验证树的状态
+  getStats(): BVHStats                             // 获取统计信息（迭代方式）
+  validate(): { valid: boolean; errors: string[] } // 验证树的状态（迭代方式）
 }
 ```
 
@@ -260,17 +259,21 @@ abstract class BoundingVolume {
 
 ## Pseudocode: Key Algorithms
 
-### BVHNode Traversal
+### BVHNode Traversal (Iterative)
 
 ```
-TRAVERSE_NODE(node, callback):
-  1. CALL callback(node)
+TRAVERSE_NODE(root, callback):
+  1. INIT stack = [root]
 
-  2. IF node.left IS NOT NULL:
-     TRAVERSE_NODE(node.left, callback)
+  2. WHILE stack.length > 0:
+     node = stack.pop()
+     CALL callback(node)
 
-  3. IF node.right IS NOT NULL:
-     TRAVERSE_NODE(node.right, callback)
+     3. IF node.right IS NOT NULL:
+        stack.push(node.right)
+
+     4. IF node.left IS NOT NULL:
+        stack.push(node.left)
 ```
 
 ### CollisionResult Sorting
@@ -283,65 +286,94 @@ COMPARE_BY_DISTANCE(a, b):
   1. RETURN a.distance - b.distance
 ```
 
-### BVH Tree Construction (SAH Strategy)
+### BVH Tree Construction (SAH Strategy - Iterative)
 
 ```
-BUILD_SAH(objects, unionAABB):
-  1. IF objects.length <= maxLeafSize:
-     FOR EACH obj IN objects:
-       tree.insert(obj.bounds, obj.userData)
-     RETURN
+BUILD_SAH_ITERATIVE(objects, maxLeafSize):
+  1. INIT workStack = [{ objects }]
 
-  2. splitAxis = SELECT_LONGEST_AXIS(unionAABB)
-  3. splitPos = FIND_BEST_SPLIT_SAH(objects, splitAxis, unionAABB)
+  2. WHILE workStack.length > 0:
+     work = workStack.pop()
+     currentObjects = work.objects
 
-  4. leftObjects = []
-     rightObjects = []
+     3. IF currentObjects.length <= maxLeafSize:
+        FOR EACH obj IN currentObjects:
+          tree.insert(obj.bounds, obj.userData)
+        CONTINUE
 
-  5. FOR EACH obj IN objects:
-     center = GET_CENTER(obj.bounds)
-     IF center[splitAxis] < splitPos:
-       leftObjects.push(obj)
-     ELSE:
-       rightObjects.push(obj)
+     4. CALCULATE unionAABB of currentObjects
+     5. FIND best split using 32-bin SAH (all 3 axes)
+     6. CALCULATE leafCost = TRIANGLE_INTERSECT_COST * count
 
-  6. IF leftObjects.length > 0:
-     IF leftObjects.length <= maxLeafSize:
-       FOR EACH obj IN leftObjects:
-         tree.insert(obj.bounds, obj.userData)
-     ELSE:
-       BUILD_SAH(leftObjects, ...)
+     7. IF cost >= leafCost AND count <= maxLeafSize * 2:
+        FOR EACH obj IN currentObjects:
+          tree.insert(obj.bounds, obj.userData)
+        CONTINUE
 
-  7. IF rightObjects.length > 0:
-     IF rightObjects.length <= maxLeafSize:
-       FOR EACH obj IN rightObjects:
-         tree.insert(obj.bounds, obj.userData)
-     ELSE:
-       BUILD_SAH(rightObjects, ...)
+     8. PARTITION objects -> leftObjects[], rightObjects[]
+
+     9. IF partition invalid:
+        SORT by center[axis], split at mid
+        IF still invalid: direct insert all
+        ELSE: push to stack
+
+     10. IF rightObjects.length > 0: workStack.push({ objects: rightObjects })
+     11. IF leftObjects.length > 0: workStack.push({ objects: leftObjects })
 ```
 
-### Raycast Query
+### SAH Cost Calculation (32-Bin Optimization)
 
 ```
-RAYCAST(node, ray, results, maxDistance):
-  1. IF node.isLeaf:
-     IF node.objectId < 0: RETURN
+FIND_BEST_SPLIT_SAH(objects, parentAABB):
+  1. INIT 32 bins for each axis (X, Y, Z)
+  2. CALCULATE parentSA = surfaceArea(parentAABB)
 
-     distance = AABB.intersectRayDistance(ray)
+  3. FOR axis IN [0, 1, 2]:
+     - Distribute objects to bins by centroid
+     - Accumulate bin counts and bounds
 
-     IF distance != null AND (maxDistance == null OR distance <= maxDistance):
-       point = ray.getPoint(distance)
-       normal = CALCULATE_NORMAL(node.bounds, point)
-       results.push(new CollisionResult(node.userData, distance, point, normal, node))
+     4. PRE-COMPUTE left/right cumulative arrays
 
-     RETURN
+     5. FOR each split point:
+        - CALCULATE leftSA, rightSA
+        - CALCULATE cost = TRAVERSAL_COST +
+          (leftSA/parentSA) * leftCount * TRIANGLE_INTERSECT_COST +
+          (rightSA/parentSA) * rightCount * TRIANGLE_INTERSECT_COST
 
-  2. // Frustum culling - skip if no intersection
-  3. IF !AABB.intersectRay(ray): RETURN
+     6. TRACK minimum cost across all axes
 
-  4. // Recurse on children
-  5. IF node.left: RAYCAST(node.left, ray, results, maxDistance)
-  6. IF node.right: RAYCAST(node.right, ray, results, maxDistance)
+  7. RETURN bestAxis, bestPosition, bestCost
+```
+
+### Raycast Query (Iterative)
+
+```
+RAYCAST_ITERATIVE(root, ray, results, maxDistance):
+  1. INIT stack = [root]
+
+  2. WHILE stack.length > 0:
+     node = stack.pop()
+
+     3. IF node.isLeaf:
+        IF node.objectId < 0: CONTINUE
+
+        distance = AABB.intersectRayDistance(ray)
+
+        IF distance != null AND (maxDistance == null OR distance <= maxDistance):
+          point = ray.getPoint(distance)
+          normal = CALCULATE_NORMAL(node.bounds, point)
+          results.push(new CollisionResult(node.userData, distance, point, normal, node))
+
+        CONTINUE
+
+     4. // Frustum culling - skip if no intersection
+     5. IF !AABB.intersectRay(ray): CONTINUE
+
+     6. // Add children to stack (right first for left-first traversal)
+     7. IF node.right: stack.push(node.right)
+     8. IF node.left: stack.push(node.left)
+
+  9. SORT results by distance
 ```
 
 ## Negative Constraints
@@ -354,3 +386,7 @@ RAYCAST(node, ray, results, maxDistance):
 - **DO NOT** perform raycasts without checking for null/undefined bounds first
 - **DO NOT** ignore edge cases where child nodes are null in tree operations
 - **DO NOT** use BVHTree after calling clear() without reinitializing root
+- **DO NOT** use recursive algorithms (always use iterative/stack-based approaches)
+- **DO NOT** create temporary AABB objects in hot paths (use direct bounds calculations)
+- **DO NOT** exceed stack limits with deep recursion (use iterative traversal)
+- **DO NOT** ignore SAH cost constants (TRIANGLE_INTERSECT_COST=1.25, TRAVERSAL_COST=1.0)

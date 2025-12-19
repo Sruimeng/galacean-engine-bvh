@@ -49,6 +49,53 @@ class PerformanceTimer {
 }
 ```
 
+### Optimized Direct Calculations (No Temp Objects)
+```typescript
+// OLD: Creates temporary AABB objects
+function calculateBoundsGrowth(oldBounds, newBounds): number {
+  const union = oldBounds.union(newBounds); // Creates temp AABB
+  return union.volume() - oldBounds.volume();
+}
+
+// NEW: Direct calculation (used in BVHTree.ts)
+function calculateBoundsGrowth(oldBounds, newBounds): number {
+  const unionMinX = Math.min(oldBounds.min.x, newBounds.min.x);
+  const unionMinY = Math.min(oldBounds.min.y, newBounds.min.y);
+  const unionMinZ = Math.min(oldBounds.min.z, newBounds.min.z);
+  const unionMaxX = Math.max(oldBounds.max.x, newBounds.max.x);
+  const unionMaxY = Math.max(oldBounds.max.y, newBounds.max.y);
+  const unionMaxZ = Math.max(oldBounds.max.z, newBounds.max.z);
+
+  const unionVolume =
+    Math.max(0, unionMaxX - unionMinX) *
+    Math.max(0, unionMaxY - unionMinY) *
+    Math.max(0, unionMaxZ - unionMinZ);
+
+  const oldVolume =
+    Math.max(0, oldBounds.max.x - oldBounds.min.x) *
+    Math.max(0, oldBounds.max.y - oldBounds.min.y) *
+    Math.max(0, oldBounds.max.z - oldBounds.min.z);
+
+  return unionVolume - oldVolume;
+}
+
+// Direct bounds update (used in BVHNode.ts)
+function updateNodeBounds(node: BVHNode): void {
+  if (!node.left || !node.right) return;
+
+  // Direct calculation without temp objects
+  const minX = Math.min(node.left.bounds.min.x, node.right.bounds.min.x);
+  const minY = Math.min(node.left.bounds.min.y, node.right.bounds.min.y);
+  const minZ = Math.min(node.left.bounds.min.z, node.right.bounds.min.z);
+  const maxX = Math.max(node.left.bounds.max.x, node.right.bounds.max.x);
+  const maxY = Math.max(node.left.bounds.max.y, node.right.bounds.max.y);
+  const maxZ = Math.max(node.left.bounds.max.z, node.right.bounds.max.z);
+
+  node.bounds.min.set(minX, minY, minZ);
+  node.bounds.max.set(maxX, maxY, maxZ);
+}
+```
+
 ### Usage Examples
 ```typescript
 // Union bounds for BVH node creation
@@ -59,7 +106,7 @@ const cost = boundsSurfaceArea(combined) * primitiveCount;
 
 // Longest axis for splitting
 const axis = getLongestAxis(combined);
-// Use axis: 0->X, 1->Y, 2->Z for partition
+// Use axis: 0->X, 1->Y, 2:Z for partition
 
 // Performance measurement
 const timer = new PerformanceTimer();
@@ -246,6 +293,9 @@ abstract class BoundingVolume {
 - **Do not create** new Vector3 instances in tight loops - reuse objects
 - **Do not ignore** the longest axis result - it's critical for BVH split efficiency
 - **Do not skip** early-out tests using bounds intersections
+- **Do not create** temporary AABB objects in performance-critical paths
+- **Do not use** recursive algorithms when iterative/stack-based is available
+- **Do not ignore** SAH constants (TRIANGLE_INTERSECT_COST=1.25, TRAVERSAL_COST=1.0)
 
 ### ❌ Type Safety
 - **Do not use** nonsensical bounds (min > max) - always construct properly

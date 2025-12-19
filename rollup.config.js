@@ -1,0 +1,18 @@
+import { getPlugins } from './scripts/rollup-config-helper.js';
+import { readFileSync } from 'fs';
+
+const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'));
+
+export default {
+  input: 'src/index.ts',
+  output: {
+    file: 'dist/index.mjs',
+    format: 'esm',
+    sourcemap: true,
+  },
+  external: [
+    '@galacean/engine-math',
+    'eventemitter3',
+  ],
+  plugins: getPlugins(pkg, { target: 'ES2020' }),
+};

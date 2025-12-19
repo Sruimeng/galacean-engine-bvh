@@ -64,55 +64,87 @@ INITIALIZE_SYSTEM:
   1. CREATE BVHTree(maxLeaf=8, maxDepth=32, enableSAH=true)
   2. PREPARE objects: BoundingBox + userData[]
 
-BUILD_PHASE:
+BUILD_PHASE (Iterative):
   BVHBuilder.build(objects, strategy):
     IF objects.length <= maxLeafSize:
       FOR EACH obj: tree.insert(obj.bounds, obj.userData)
       RETURN tree
 
-    CALCULATE unionAABB = union of all bounds
-    SELECT splitAxis = longest axis of unionAABB
-
     SWITCH strategy:
-      CASE SAH:
-        splitPos = calculateSAH(objects, axis, unionAABB)
-      CASE Median:
-        sorted = sort by center[axis]
-        splitPos = sorted[mid].center[axis]
-      CASE Equal:
-        splitPos = center of unionAABB[axis]
+      CASE SAH:    buildSAHIterative(tree, objects)
+      CASE Median: buildMedianIterative(tree, objects)
+      CASE Equal:  buildEqualIterative(tree, objects)
 
-    PARTITION objects -> leftObjects[], rightObjects[]
-    RECURSE build(leftObjects) + build(rightObjects)
+BUILD_SAH_ITERATIVE:
+  1. INIT workStack = [{ objects }]
+  2. WHILE workStack.length > 0:
+     work = workStack.pop()
+     currentObjects = work.objects
 
-QUERY_PHASE:
+     3. IF currentObjects.length <= maxLeafSize:
+        FOR EACH obj: tree.insert(obj.bounds, obj.userData)
+        CONTINUE
+
+     4. CALCULATE unionAABB
+     5. FIND best split (32-bin SAH, all 3 axes)
+     6. IF cost >= leafCost: direct insert, CONTINUE
+
+     7. PARTITION objects -> left[], right[]
+     8. IF invalid partition: use median split
+
+     9. PUSH right then left to workStack
+
+QUERY_PHASE (Iterative):
   tree.raycast(ray):
-    IF node.isLeaf:
-      RETURN intersection if valid
-    ELSE:
-      IF node.bounds intersects ray:
-        RECURSE left + RECURSE right
-      ELSE: prune
+    INIT stack = [root]
+    WHILE stack.length > 0:
+      node = stack.pop()
+
+      IF node.isLeaf:
+        IF intersection valid: add to results
+        CONTINUE
+
+      IF !AABB.intersectRay(ray): CONTINUE
+
+      IF node.right: stack.push(node.right)
+      IF node.left: stack.push(node.left)
+
+    SORT results by distance
 
   tree.queryRange(center, radius):
     rangeAABB = createBoundingBox(center, radius*2)
-    tree.intersectBounds(rangeAABB)
+    INIT stack = [root]
+    WHILE stack.length > 0:
+      node = stack.pop()
+      IF node.isLeaf: collect userData
+      ELSE IF AABB.intersectAABB(rangeAABB):
+        push children to stack
 
   tree.findNearest(position):
     candidates = []
-    RECURSE tree:
-      IF leaf: calculate distance, add to candidates
-      ELSE: prioritize closer child first
+    INIT stack = [root]
+    WHILE stack.length > 0:
+      node = stack.pop()
+      distance = getDistanceToBounding(position, node.bounds)
+      IF node.isLeaf: add to candidates
+      ELSE: prioritize closer child first (push farther, then closer)
+
     RETURN sorted[0].userData
 
-UPDATE_PHASE:
+UPDATE_PHASE (Iterative):
   tree.update(objectId, newBounds):
     node = find object
     node.bounds = newBounds
-    node.parent.updateBounds()  // refit up tree
+    node.parent.updateBounds()  // iterative upward traversal
+
+  tree.refit():
+    // Post-order traversal using depth sorting
+    collect all nodes by depth (deepest first)
+    FOR EACH node (deepest to shallowest):
+      IF internal: update bounds from children
 
   tree.rebuild(strategy):
-    collect all objects
+    collect all objects via iterative traversal
     clear tree
     recalculate with BVHBuilder
 ```
@@ -194,3 +226,7 @@ interface CollisionResult {
 - **DO NOT** store references to internal nodes (may be invalidated)
 - **DO NOT** mix strategies without understanding trade-offs
 - **DO NOT** assume thread safety (single-threaded operations)
+- **DO NOT** use recursive algorithms (always iterative/stack-based)
+- **DO NOT** create temporary objects in hot paths (optimize memory)
+- **DO NOT** ignore SAH constants (TRIANGLE_INTERSECT_COST=1.25, TRAVERSAL_COST=1.0)
+- **DO NOT** use 32-bit stack arrays (use dynamic stack for large scenes)

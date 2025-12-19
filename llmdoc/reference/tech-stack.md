@@ -37,9 +37,11 @@ interface Toolchain {
 | `eventemitter3` | `^5.0.1` | Event bus system |
 | `zustand` | `^5.0.3` | State management |
 | `immer` | `^10.1.1` | Immutable state updates |
-| `react` | `^18.3.1` | UI rendering |
-| `react-dom` | `^18.3.1` | React DOM adapter |
-| `@vitejs/plugin-react` | `^4.6.0` | Vite React integration |
+| `react` | `^18.3.1` | UI rendering (demo only) |
+| `react-dom` | `^18.3.1` | React DOM adapter (demo only) |
+| `@vitejs/plugin-react` | `^4.6.0` | Vite React integration (demo only) |
+
+**Note**: Core BVH library only depends on `@galacean/engine-math`. React/UI dependencies are for demo purposes.
 
 ## Development Toolchain
 
@@ -66,39 +68,81 @@ interface Toolchain {
 ## Build Pipeline
 
 ```
-Source (.ts/.tsx)
+Source (.ts)
     ↓
-SWC (ES5 Transform)
+SWC (ES5 Transform + Tree Shaking)
     ↓
 Rollup (Bundle)
     ↓
 Output (ESM: dist/index.mjs)
+    ↓
+Vite (Dev Server + Demo)
 ```
 
-### Rollup Configuration Script
+### Rollup Configuration (rollup.config.js)
 ```javascript
-// scripts/rollup-config-helper.js
-{
+import swc from '@rollup/plugin-swc';
+import resolve from '@rollup/plugin-node-resolve';
+import terser from '@rollup/plugin-terser';
+
+export default {
+  input: 'src/index.ts',
+  output: {
+    file: 'dist/index.mjs',
+    format: 'esm',
+    sourcemap: true
+  },
   plugins: [
-    getSWCPlugin({ target: 'ES5' }),
     resolve(),
-    commonjs(),
-    minify({ sourceMap: true }) // optional
-  ]
-}
+    swc({
+      swcOptions: {
+        jsc: {
+          target: 'es5',
+          parser: { syntax: 'typescript' }
+        }
+      }
+    }),
+    terser()
+  ],
+  external: ['@galacean/engine-math']
+};
+```
+
+### Vite Configuration (vite.config.ts)
+```typescript
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+
+export default defineConfig({
+  plugins: [react()],
+  build: {
+    outDir: 'demo/dist',
+    rollupOptions: {
+      input: {
+        main: './demo/index.html',
+        raycasting: './demo/html/raycasting.html',
+        // ... other demos
+      }
+    }
+  },
+  server: {
+    port: 3000,
+    open: '/demo/index.html'
+  }
+});
 ```
 
 ## Development Scripts
 
 | Script | Command | Purpose |
 |--------|---------|---------|
-| `dev` | `vite` | Start dev server |
-| `build` | `pnpm build:module` | Build ES module |
-| `build:module` | `rollup -c` | Rollup bundle |
-| `build:docs` | `typedoc` | Generate API docs |
+| `dev` | `vite` | Start dev server (demo) |
+| `build` | `rollup -c` | Build library (ESM) |
+| `build:demo` | `vite build` | Build demo site |
+| `preview` | `vite preview` | Preview built demo |
 | `lint` | `eslint .` | Check code quality |
 | `lint:fix` | `eslint . --fix` | Auto-fix issues |
-| `check:ts` | `tsc -b ./tsconfig.check.json` | Type check only |
+| `check:ts` | `tsc --noEmit` | Type check only |
 
 ## Note on Config Files
 
@@ -129,6 +173,9 @@ Output (ESM: dist/index.mjs)
 - **DO NOT** commit without passing lint-staged checks
 - **DO NOT** target ES6+ in final bundle (must be ES5)
 - **DO NOT** bypass SWC transformation for legacy code
-- **DO NOT** modify rollup config helper directly - use extending patterns
+- **DO NOT** modify rollup.config.js directly - use extending patterns
 - **DO NOT** add runtime dependencies without security audit
 - **DO NOT** ignore TypeScript errors in CI pipeline
+- **DO NOT** bundle `@galacean/engine-math` - it's an external dependency
+- **DO NOT** include demo dependencies in library build
+- **DO NOT** use recursive algorithms in source (use iterative/stack-based)
