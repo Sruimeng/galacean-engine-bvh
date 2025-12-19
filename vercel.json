@@ -1,0 +1,10 @@
+{
+  "buildCommand": "pnpm build:vercel",
+  "outputDirectory": "demo-dist",
+  "framework": "vite",
+  "rewrites": [
+    { "source": "/", "destination": "/demo/index.html" },
+    { "source": "/index.html", "destination": "/demo/index.html" },
+    { "source": "/html/:path*", "destination": "/demo/html/:path*" }
+  ]
+}

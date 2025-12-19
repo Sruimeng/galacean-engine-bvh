@@ -87,7 +87,12 @@ export class BVHBuilder {
     // 使用工作栈代替递归
     const workStack: BuildWorkItem[] = [{ objects }];
 
-    while (workStack.length > 0) {
+    // 安全限制：最大迭代次数（每个对象最多产生 2 个工作项）
+    const maxIterations = objects.length * 2 + 1000;
+    let iterations = 0;
+
+    while (workStack.length > 0 && iterations < maxIterations) {
+      iterations++;
       const work = workStack.pop()!;
       const currentObjects = work.objects;
 
@@ -199,7 +204,12 @@ export class BVHBuilder {
     // 使用工作栈代替递归
     const workStack: BuildWorkItem[] = [{ objects }];
 
-    while (workStack.length > 0) {
+    // 安全限制：最大迭代次数
+    const maxIterations = objects.length * 2 + 1000;
+    let iterations = 0;
+
+    while (workStack.length > 0 && iterations < maxIterations) {
+      iterations++;
       const work = workStack.pop()!;
       const currentObjects = work.objects;
 
@@ -258,7 +268,12 @@ export class BVHBuilder {
     // 使用工作栈代替递归
     const workStack: BuildWorkItem[] = [{ objects }];
 
-    while (workStack.length > 0) {
+    // 安全限制：最大迭代次数
+    const maxIterations = objects.length * 2 + 1000;
+    let iterations = 0;
+
+    while (workStack.length > 0 && iterations < maxIterations) {
+      iterations++;
       const work = workStack.pop()!;
       const currentObjects = work.objects;
 

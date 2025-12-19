@@ -1,5 +1,5 @@
-import { getPlugins } from './scripts/rollup-config-helper.js';
 import { readFileSync } from 'fs';
+import { getPlugins } from './scripts/rollup-config-helper.js';
 
 const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'));
 
@@ -10,9 +10,6 @@ export default {
     format: 'esm',
     sourcemap: true,
   },
-  external: [
-    '@galacean/engine-math',
-    'eventemitter3',
-  ],
+  external: ['@galacean/engine-math', 'eventemitter3'],
   plugins: getPlugins(pkg, { target: 'ES2020' }),
 };

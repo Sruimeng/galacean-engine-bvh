@@ -250,8 +250,24 @@ export class BVHTree {
     const nodes: BVHNode[] = [];
     const stack: BVHNode[] = [this.root];
 
-    while (stack.length > 0) {
+    // 安全限制：最大迭代次数
+    const maxIterations = this._count * 2 + 1000;
+    let iterations = 0;
+
+    // 用于检测循环引用
+    const visited = new Set<BVHNode>();
+
+    while (stack.length > 0 && iterations < maxIterations) {
+      iterations++;
       const node = stack.pop()!;
+
+      // 检测循环引用
+      if (visited.has(node)) {
+        console.warn('BVH refit: 检测到循环引用，跳过节点');
+        continue;
+      }
+      visited.add(node);
+
       nodes.push(node);
       if (node.left) stack.push(node.left);
       if (node.right) stack.push(node.right);
@@ -263,12 +279,18 @@ export class BVHTree {
     // 更新每个非叶子节点的包围盒
     for (const node of nodes) {
       if (node.isLeaf) continue;
-      if (!node.left) continue;
+      if (!node.left && !node.right) continue;
 
-      const leftAABB = AABB.fromBoundingBox(node.left.bounds);
-      const rightAABB = node.right ? AABB.fromBoundingBox(node.right.bounds) : leftAABB;
-      const union = node.right ? leftAABB.union(rightAABB) : leftAABB;
-      node.bounds = union.getBounds();
+      if (node.left && node.right) {
+        const leftAABB = AABB.fromBoundingBox(node.left.bounds);
+        const rightAABB = AABB.fromBoundingBox(node.right.bounds);
+        const union = leftAABB.union(rightAABB);
+        node.bounds = union.getBounds();
+      } else if (node.left) {
+        node.bounds = node.left.bounds.clone();
+      } else if (node.right) {
+        node.bounds = node.right.bounds.clone();
+      }
     }
   }
 
@@ -317,9 +339,23 @@ export class BVHTree {
 
     // 使用迭代方式遍历
     const stack: { node: BVHNode; depth: number }[] = [{ node: this.root, depth: 0 }];
+    const visited = new Set<BVHNode>();
 
-    while (stack.length > 0) {
+    // 安全限制：最大迭代次数
+    const maxIterations = this._count * 2 + 1000;
+    let iterations = 0;
+
+    while (stack.length > 0 && iterations < maxIterations) {
+      iterations++;
       const { node, depth } = stack.pop()!;
+
+      // 循环引用检测
+      if (visited.has(node)) {
+        console.warn('BVH getStats: 检测到循环引用，跳过节点');
+        continue;
+      }
+      visited.add(node);
+
       stats.nodeCount++;
       stats.maxDepth = Math.max(stats.maxDepth, depth);
 
@@ -362,10 +398,23 @@ export class BVHTree {
 
     // 使用迭代方式验证
     const stack: { node: BVHNode; depth: number }[] = [{ node: this.root, depth: 0 }];
+    const visited = new Set<BVHNode>();
 
-    while (stack.length > 0) {
+    // 安全限制：最大迭代次数
+    const maxIterations = this._count * 2 + 1000;
+    let iterations = 0;
+
+    while (stack.length > 0 && iterations < maxIterations) {
+      iterations++;
       const { node, depth } = stack.pop()!;
       if (!node) continue;
+
+      // 循环引用检测
+      if (visited.has(node)) {
+        errors.push('检测到循环引用');
+        continue;
+      }
+      visited.add(node);
 
       // 检查深度一致性
       if (node.depth !== depth) {
@@ -421,8 +470,22 @@ export class BVHTree {
   private findBestLeaf(node: BVHNode, bounds: BoundingBox): BVHNode {
     // 使用迭代而非递归，避免栈溢出
     let current = node;
+    const visited = new Set<BVHNode>();
 
-    while (!current.isLeaf) {
+    // 安全限制：最大迭代次数
+    const maxIterations = this.maxDepth * 2;
+    let iterations = 0;
+
+    while (!current.isLeaf && iterations < maxIterations) {
+      iterations++;
+
+      // 循环引用检测
+      if (visited.has(current)) {
+        console.warn('BVH findBestLeaf: 检测到循环引用');
+        break;
+      }
+      visited.add(current);
+
       if (!current.left) break;
 
       const leftGrow = this.calculateBoundsGrowth(current.left.bounds, bounds);
@@ -449,9 +512,23 @@ export class BVHTree {
     // 使用迭代方式估算叶子节点中的对象数
     let leafCount = 0;
     const stack: BVHNode[] = [node];
+    const visited = new Set<BVHNode>();
 
-    while (stack.length > 0) {
+    // 安全限制：最大迭代次数
+    const maxIterations = this._count * 2 + 1000;
+    let iterations = 0;
+
+    while (stack.length > 0 && iterations < maxIterations) {
+      iterations++;
       const n = stack.pop()!;
+
+      // 循环引用检测
+      if (visited.has(n)) {
+        console.warn('BVH shouldSplit: 检测到循环引用');
+        continue;
+      }
+      visited.add(n);
+
       if (n.isLeaf) {
         if (n.objectId >= 0) leafCount++;
       } else {
@@ -541,7 +618,13 @@ export class BVHTree {
     let node = startNode;
     let depth = startDepth;
 
-    while (true) {
+    // 最大迭代次数为树的最大深度的两倍
+    const maxIterations = this.maxDepth * 2;
+    let iterations = 0;
+
+    while (iterations < maxIterations) {
+      iterations++;
+
       if (depth >= this.maxDepth) {
         // 达到最大深度时，强制在当前节点进行分裂
         if (node.isLeaf) {
@@ -558,6 +641,12 @@ export class BVHTree {
             }
           } else if (node.left) {
             this.splitLeaf(node.left, bounds, userData, objectId);
+          } else {
+            // 异常情况：内部节点没有子节点，直接创建叶子
+            node.left = BVHNode.createLeaf(bounds, userData, objectId, depth);
+            node.left.parent = node;
+            this._objectMap.set(objectId, node.left);
+            node.updateBounds();
           }
         }
         return;
@@ -592,6 +681,19 @@ export class BVHTree {
         node = node.left;
       }
       depth++;
+    }
+
+    // 如果达到最大迭代次数，强制插入到当前节点
+    console.warn('BVH insertIterative: 达到最大迭代次数，强制插入');
+    if (node.isLeaf) {
+      this.splitLeaf(node, bounds, userData, objectId);
+    } else if (node.left) {
+      this.splitLeaf(node.left, bounds, userData, objectId);
+    } else {
+      node.left = BVHNode.createLeaf(bounds, userData, objectId, depth);
+      node.left.parent = node;
+      this._objectMap.set(objectId, node.left);
+      node.updateBounds();
     }
   }
 
@@ -643,10 +745,14 @@ export class BVHTree {
     results: CollisionResult[],
     maxDistance?: number,
   ): void {
-    // 使用迭代方式进行光线投射
     const stack: BVHNode[] = [startNode];
 
-    while (stack.length > 0) {
+    // 安全限制：最大迭代次数
+    const maxIterations = this._count * 2 + 1000;
+    let iterations = 0;
+
+    while (stack.length > 0 && iterations < maxIterations) {
+      iterations++;
       const node = stack.pop()!;
 
       if (node.isLeaf) {
@@ -704,10 +810,14 @@ export class BVHTree {
   }
 
   private queryRangeIterative(startNode: BVHNode, range: AABB, results: unknown[]): void {
-    // 使用迭代方式进行范围查询
     const stack: BVHNode[] = [startNode];
 
-    while (stack.length > 0) {
+    // 安全限制：最大迭代次数
+    const maxIterations = this._count * 2 + 1000;
+    let iterations = 0;
+
+    while (stack.length > 0 && iterations < maxIterations) {
+      iterations++;
       const node = stack.pop()!;
 
       if (node.isLeaf) {
@@ -732,10 +842,14 @@ export class BVHTree {
     candidates: { distance: number; data: unknown }[],
     maxDistance?: number,
   ): void {
-    // 使用迭代方式查找最近邻
     const stack: BVHNode[] = [startNode];
 
-    while (stack.length > 0) {
+    // 安全限制：最大迭代次数
+    const maxIterations = this._count * 2 + 1000;
+    let iterations = 0;
+
+    while (stack.length > 0 && iterations < maxIterations) {
+      iterations++;
       const node = stack.pop()!;
 
       // 计算位置到包围盒的最近点距离
@@ -781,11 +895,15 @@ export class BVHTree {
     bounds: BoundingBox,
     results: unknown[],
   ): void {
-    // 使用迭代方式进行包围盒相交检测
     const checkAABB = AABB.fromBoundingBox(bounds);
     const stack: BVHNode[] = [startNode];
 
-    while (stack.length > 0) {
+    // 安全限制：最大迭代次数
+    const maxIterations = this._count * 2 + 1000;
+    let iterations = 0;
+
+    while (stack.length > 0 && iterations < maxIterations) {
+      iterations++;
       const node = stack.pop()!;
 
       if (node.isLeaf) {
@@ -842,9 +960,22 @@ export class BVHTree {
     // 使用迭代方式计算树深度，避免栈溢出
     let maxDepth = 0;
     const stack: { node: BVHNode; depth: number }[] = [{ node, depth: 1 }];
+    const visited = new Set<BVHNode>();
 
-    while (stack.length > 0) {
+    // 安全限制：最大迭代次数
+    const maxIterations = this._count * 2 + 1000;
+    let iterations = 0;
+
+    while (stack.length > 0 && iterations < maxIterations) {
+      iterations++;
       const { node: current, depth } = stack.pop()!;
+
+      // 循环引用检测
+      if (visited.has(current)) {
+        console.warn('BVH getTreeDepth: 检测到循环引用');
+        continue;
+      }
+      visited.add(current);
 
       if (current.isLeaf) {
         maxDepth = Math.max(maxDepth, depth);

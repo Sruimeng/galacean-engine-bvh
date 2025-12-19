@@ -1,5 +1,5 @@
 import { Vector3 } from '@galacean/engine-math';
-import type { BVHNode } from './BVHNode';
+import { BVHNode } from './BVHNode';
 
 /**
  * 碰撞检测结果
@@ -24,7 +24,7 @@ export class CollisionResult {
     this.distance = distance || 0;
     this.point = point || new Vector3();
     this.normal = normal || new Vector3();
-    this.node = node;
+    this.node = node || new BVHNode();
   }
 
   /**
@@ -36,7 +36,7 @@ export class CollisionResult {
       this.distance,
       this.point.clone(),
       this.normal.clone(),
-      this.node
+      this.node,
     );
   }
 

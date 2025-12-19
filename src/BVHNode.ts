@@ -52,8 +52,9 @@ export class BVHNode {
    */
   getDepth(): number {
     let depth = 0;
-    let node: BVHNode = this;
-    while (node.parent) {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    let node: BVHNode | null = this;
+    while (node?.parent) {
       depth++;
       node = node.parent;
     }
@@ -105,31 +106,65 @@ export class BVHNode {
 
   /**
    * 更新包围盒（迭代向上）
+   * 从当前节点开始，向上遍历到根节点，更新每个内部节点的包围盒
    */
   updateBounds(): void {
-    // 使用迭代而非递归，避免栈溢出
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
     let current: BVHNode | null = this;
 
-    while (current) {
-      if (!current.isLeaf && current.left && current.right) {
-        // 直接计算合并后的包围盒，避免创建临时 AABB 对象
-        const minX = Math.min(current.left.bounds.min.x, current.right.bounds.min.x);
-        const minY = Math.min(current.left.bounds.min.y, current.right.bounds.min.y);
-        const minZ = Math.min(current.left.bounds.min.z, current.right.bounds.min.z);
-        const maxX = Math.max(current.left.bounds.max.x, current.right.bounds.max.x);
-        const maxY = Math.max(current.left.bounds.max.y, current.right.bounds.max.y);
-        const maxZ = Math.max(current.left.bounds.max.z, current.right.bounds.max.z);
+    // 安全限制：最大迭代次数（防止循环引用导致无限循环）
+    // 正常情况下，树的深度不会超过 64 层
+    const maxIterations = 64;
+    let iterations = 0;
 
-        current.bounds.min.x = minX;
-        current.bounds.min.y = minY;
-        current.bounds.min.z = minZ;
-        current.bounds.max.x = maxX;
-        current.bounds.max.y = maxY;
-        current.bounds.max.z = maxZ;
+    // 用于检测循环引用
+    const visited = new Set<BVHNode>();
+
+    while (current && iterations < maxIterations) {
+      // 检测循环引用
+      if (visited.has(current)) {
+        console.warn('BVH updateBounds: 检测到循环引用，停止更新');
+        break;
+      }
+      visited.add(current);
+      iterations++;
+
+      if (!current.isLeaf) {
+        // 内部节点：根据子节点更新包围盒
+        if (current.left && current.right) {
+          // 有两个子节点，合并包围盒
+          current.bounds.min.x = Math.min(current.left.bounds.min.x, current.right.bounds.min.x);
+          current.bounds.min.y = Math.min(current.left.bounds.min.y, current.right.bounds.min.y);
+          current.bounds.min.z = Math.min(current.left.bounds.min.z, current.right.bounds.min.z);
+          current.bounds.max.x = Math.max(current.left.bounds.max.x, current.right.bounds.max.x);
+          current.bounds.max.y = Math.max(current.left.bounds.max.y, current.right.bounds.max.y);
+          current.bounds.max.z = Math.max(current.left.bounds.max.z, current.right.bounds.max.z);
+        } else if (current.left) {
+          // 只有左子节点，复制其包围盒
+          current.bounds.min.x = current.left.bounds.min.x;
+          current.bounds.min.y = current.left.bounds.min.y;
+          current.bounds.min.z = current.left.bounds.min.z;
+          current.bounds.max.x = current.left.bounds.max.x;
+          current.bounds.max.y = current.left.bounds.max.y;
+          current.bounds.max.z = current.left.bounds.max.z;
+        } else if (current.right) {
+          // 只有右子节点，复制其包围盒
+          current.bounds.min.x = current.right.bounds.min.x;
+          current.bounds.min.y = current.right.bounds.min.y;
+          current.bounds.min.z = current.right.bounds.min.z;
+          current.bounds.max.x = current.right.bounds.max.x;
+          current.bounds.max.y = current.right.bounds.max.y;
+          current.bounds.max.z = current.right.bounds.max.z;
+        }
+        // 如果没有子节点，保持当前包围盒不变
       }
 
       // 向上移动到父节点
       current = current.parent;
+    }
+
+    if (iterations >= maxIterations) {
+      console.warn('BVH updateBounds: 达到最大迭代次数，可能存在异常深度的树');
     }
   }
 
@@ -142,16 +177,37 @@ export class BVHNode {
 
   /**
    * 遍历节点（迭代方式）
+   * 使用深度优先遍历访问所有节点
    */
   traverse(callback: (node: BVHNode) => void): void {
-    // 使用迭代而非递归，避免栈溢出
     const stack: BVHNode[] = [this];
 
-    while (stack.length > 0) {
+    // 用于检测循环引用
+    const visited = new Set<BVHNode>();
+
+    // 安全限制：最大节点数（防止无限循环）
+    const maxNodes = 1000000; // 100万个节点
+    let nodeCount = 0;
+
+    while (stack.length > 0 && nodeCount < maxNodes) {
       const node = stack.pop()!;
+
+      // 检测循环引用
+      if (visited.has(node)) {
+        console.warn('BVH traverse: 检测到循环引用，跳过节点');
+        continue;
+      }
+      visited.add(node);
+      nodeCount++;
+
       callback(node);
+
       if (node.right) stack.push(node.right);
       if (node.left) stack.push(node.left);
+    }
+
+    if (nodeCount >= maxNodes) {
+      console.warn('BVH traverse: 达到最大节点数限制，可能存在循环引用');
     }
   }
 
