@@ -1,14 +1,10 @@
 import commonjs from '@rollup/plugin-commonjs';
 import resolve from '@rollup/plugin-node-resolve';
-import { swc, defineRollupSwcOption, minify } from 'rollup-plugin-swc3';
+import { defineRollupSwcOption, minify, swc } from 'rollup-plugin-swc3';
 
 export function getPlugins(pkg, options = {}) {
   const { min = false, target } = options;
-  const plugins = [
-    getSWCPlugin({ target }),
-    resolve(),
-    commonjs(),
-  ];
+  const plugins = [getSWCPlugin({ target }), resolve(), commonjs()];
 
   if (min) {
     plugins.push(minify({ sourceMap: true }));
@@ -17,23 +13,18 @@ export function getPlugins(pkg, options = {}) {
   return plugins;
 }
 
-export function getSWCPlugin(
-  jscOptions = {},
-) {
+export function getSWCPlugin(jscOptions = {}) {
   const jsc = {
     loose: true,
     externalHelpers: true,
     target: 'ES5',
     ...jscOptions,
-  }
+  };
   const options = {
     exclude: [],
     jsc,
     sourceMaps: true,
   };
 
-  return swc(
-    defineRollupSwcOption(options),
-  );
+  return swc(defineRollupSwcOption(options));
 }
-

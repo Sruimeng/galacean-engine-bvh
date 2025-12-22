@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GLB Mesh BVH 性能对比测试</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      color: #fff;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    .container {
+      display: flex;
+      height: 100vh;
+    }
+
+    .sidebar {
+      width: 380px;
+      background: rgba(0, 0, 0, 0.3);
+      padding: 20px;
+      overflow-y: auto;
+      border-right: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .header {
+      padding: 15px 20px;
+      background: rgba(0, 0, 0, 0.2);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .header h1 {
+      font-size: 1.5rem;
+      font-weight: 600;
+      background: linear-gradient(90deg, #00d4ff, #7b2cbf);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .header p {
+      font-size: 0.85rem;
+      color: rgba(255, 255, 255, 0.6);
+      margin-top: 5px;
+    }
+
+    .canvas-container {
+      flex: 1;
+      position: relative;
+    }
+
+    #canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .stats-overlay {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(0, 0, 0, 0.7);
+      padding: 10px 15px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+    }
+
+    .stats-overlay span {
+      color: #00d4ff;
+      font-weight: 600;
+    }
+
+    .section {
+      margin-bottom: 20px;
+    }
+
+    .section-title {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: rgba(255, 255, 255, 0.8);
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .input-group {
+      margin-bottom: 12px;
+    }
+
+    .input-group label {
+      display: block;
+      font-size: 0.8rem;
+      color: rgba(255, 255, 255, 0.6);
+      margin-bottom: 6px;
+    }
+
+    .input-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    input[type="text"],
+    input[type="url"],
+    select {
+      flex: 1;
+      padding: 10px 12px;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 6px;
+      color: #fff;
+      font-size: 0.85rem;
+    }
+
+    input[type="text"]:focus,
+    input[type="url"]:focus,
+    select:focus {
+      outline: none;
+      border-color: #00d4ff;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      margin-top: 5px;
+    }
+
+    .btn {
+      padding: 10px 16px;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #00d4ff, #0099cc);
+      color: #fff;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(0, 212, 255, 0.3);
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.1);
+      color: #fff;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    .btn-success {
+      background: linear-gradient(135deg, #00c853, #009624);
+      color: #fff;
+    }
+
+    .btn-success:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(0, 200, 83, 0.3);
+    }
+
+    .btn-warning {
+      background: linear-gradient(135deg, #ff9800, #f57c00);
+      color: #fff;
+    }
+
+    .btn-warning:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(255, 152, 0, 0.3);
+    }
+
+    .sample-btns {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .sample-btn {
+      padding: 8px 12px;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 6px;
+      color: #fff;
+      font-size: 0.8rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .sample-btn:hover {
+      background: rgba(255, 255, 255, 0.2);
+      border-color: #00d4ff;
+    }
+
+    .info-card {
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 6px 0;
+      font-size: 0.85rem;
+    }
+
+    .info-row:not(:last-child) {
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .info-label {
+      color: rgba(255, 255, 255, 0.6);
+    }
+
+    .info-value {
+      color: #00d4ff;
+      font-weight: 600;
+    }
+
+    .results-panel {
+      display: none;
+      margin-top: 15px;
+    }
+
+    .result-card {
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 12px;
+    }
+
+    .result-title {
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin-bottom: 10px;
+      color: rgba(255, 255, 255, 0.8);
+    }
+
+    .comparison-bar {
+      margin-bottom: 10px;
+    }
+
+    .bar-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.8rem;
+      margin-bottom: 4px;
+    }
+
+    .bar-track {
+      height: 8px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .bar-fill {
+      height: 100%;
+      border-radius: 4px;
+      transition: width 0.3s ease;
+    }
+
+    .bar-fill.bvh {
+      background: linear-gradient(90deg, #00d4ff, #0099cc);
+    }
+
+    .bar-fill.brute {
+      background: linear-gradient(90deg, #ff6b6b, #ee5a5a);
+    }
+
+    .speedup-badge {
+      display: inline-block;
+      padding: 8px 16px;
+      background: linear-gradient(135deg, #00c853, #009624);
+      border-radius: 20px;
+      font-size: 1.2rem;
+      font-weight: 700;
+      margin-top: 10px;
+    }
+
+    .validation-pass {
+      color: #00c853;
+      font-weight: 600;
+    }
+
+    .validation-fail {
+      color: #ff6b6b;
+      font-weight: 600;
+    }
+
+    .status-badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      font-weight: 500;
+    }
+
+    .status-badge.success {
+      background: rgba(0, 200, 83, 0.2);
+      color: #00c853;
+    }
+
+    .status-badge.loading {
+      background: rgba(255, 152, 0, 0.2);
+      color: #ff9800;
+    }
+
+    .status-badge.error {
+      background: rgba(255, 107, 107, 0.2);
+      color: #ff6b6b;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .btn-group .btn {
+      flex: 1;
+    }
+
+    .note {
+      font-size: 0.75rem;
+      color: rgba(255, 255, 255, 0.5);
+      margin-top: 8px;
+      line-height: 1.4;
+    }
+
+    .divider {
+      height: 1px;
+      background: rgba(255, 255, 255, 0.1);
+      margin: 20px 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="sidebar">
+      <!-- 模型加载 -->
+      <div class="section">
+        <div class="section-title">📦 模型加载</div>
+        
+        <div class="input-group">
+          <label>GLB 文件 URL</label>
+          <div class="input-row">
+            <input type="url" id="glbUrl" placeholder="输入 GLB 文件 URL...">
+            <button class="btn btn-primary" id="loadGlbBtn">加载</button>
+          </div>
+        </div>
+
+        <div class="input-group">
+          <label>或使用示例几何体</label>
+          <div class="sample-btns">
+            <button class="sample-btn" data-type="sphere">球体</button>
+            <button class="sample-btn" data-type="cube">立方体</button>
+            <button class="sample-btn" data-type="torus">圆环</button>
+            <button class="sample-btn" data-type="cylinder">圆柱</button>
+            <button class="sample-btn" data-type="cone">圆锥</button>
+          </div>
+        </div>
+
+        <div class="info-card">
+          <div class="info-row">
+            <span class="info-label">状态</span>
+            <span class="info-value" id="loadStatus">未加载</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">网格信息</span>
+            <span class="info-value" id="meshInfo">-</span>
+          </div>
+        </div>
+
+        <p class="note">
+          💡 提示：可以使用任何公开的 GLB 文件 URL，或者使用示例几何体进行测试。
+          推荐使用 <a href="https://github.com/KhronosGroup/glTF-Sample-Models" target="_blank" style="color: #00d4ff;">glTF Sample Models</a>
+        </p>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- BVH 构建 -->
+      <div class="section">
+        <div class="section-title">🔧 BVH 构建</div>
+
+        <div class="input-group">
+          <label>构建策略</label>
+          <select id="buildStrategy">
+            <option value="sah" selected>SAH (Surface Area Heuristic)</option>
+            <option value="median">Median (中位数分割)</option>
+            <option value="equal">Equal (均等分割)</option>
+          </select>
+        </div>
+
+        <button class="btn btn-success" id="buildBvhBtn" style="width: 100%;">
+          构建 Mesh BVH
+        </button>
+
+        <div class="info-card" style="margin-top: 12px;">
+          <div class="info-row">
+            <span class="info-label">构建时间</span>
+            <span class="info-value" id="buildTime">-</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">三角形数</span>
+            <span class="info-value" id="triangleCount">-</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">节点数</span>
+            <span class="info-value" id="nodeCount">-</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">树深度</span>
+            <span class="info-value" id="treeDepth">-</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- 性能测试 -->
+      <div class="section">
+        <div class="section-title">⚡ 性能测试</div>
+
+        <div class="input-group">
+          <label>射线数量: <span id="rayCountValue">1000</span></label>
+          <input type="range" id="rayCount" min="100" max="10000" step="100" value="1000">
+        </div>
+
+        <div class="btn-group">
+          <button class="btn btn-warning" id="runTestBtn">运行测试</button>
+          <button class="btn btn-secondary" id="validateBtn">验证正确性</button>
+        </div>
+
+        <div id="validationResult" style="margin-top: 10px; text-align: center;"></div>
+      </div>
+
+      <!-- 测试结果 -->
+      <div class="results-panel" id="resultsPanel">
+        <div class="section-title">📊 测试结果</div>
+
+        <div class="result-card">
+          <div class="result-title">BVH 加速</div>
+          <div class="comparison-bar">
+            <div class="bar-label">
+              <span>BVH</span>
+              <span id="bvhTime">-</span>
+            </div>
+            <div class="bar-track">
+              <div class="bar-fill bvh" id="bvhBar" style="width: 0%"></div>
+            </div>
+          </div>
+          <div class="comparison-bar">
+            <div class="bar-label">
+              <span>暴力法</span>
+              <span id="bruteTime">-</span>
+            </div>
+            <div class="bar-track">
+              <div class="bar-fill brute" id="bruteBar" style="width: 0%"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="result-card">
+          <div class="info-row">
+            <span class="info-label">BVH QPS</span>
+            <span class="info-value" id="bvhQPS">-</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">暴力法 QPS</span>
+            <span class="info-value" id="bruteQPS">-</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">命中率</span>
+            <span class="info-value" id="hitRate">-</span>
+          </div>
+        </div>
+
+        <div style="text-align: center;">
+          <div class="speedup-badge">
+            加速比: <span id="speedup">-</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="main">
+      <div class="header">
+        <h1>GLB Mesh BVH 性能对比测试</h1>
+        <p>三角形级别的 BVH 加速 vs 暴力遍历 - 参考 three-mesh-bvh</p>
+      </div>
+
+      <div class="canvas-container">
+        <canvas id="canvas"></canvas>
+        <div class="stats-overlay">
+          FPS: <span id="fps">0</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="../src/glb-mesh-bvh.ts"></script>
+</body>
+</html>

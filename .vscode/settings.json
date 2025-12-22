@@ -30,6 +30,8 @@
     "editor.defaultFormatter": "dbaeumer.vscode-eslint"
   },
   "cSpell.words": [
+    "AABB",
+    "galacean",
     "gltf",
     "kratos",
     "matcap",

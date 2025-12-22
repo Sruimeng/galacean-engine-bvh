@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BVH Dynamic Objects Demo - Galacean Engine</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #1a1a2e;
+      color: #eee;
+      overflow: hidden;
+    }
+
+    #canvas-container {
+      width: 100vw;
+      height: 100vh;
+      position: relative;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    .controls {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      background: rgba(0, 0, 0, 0.8);
+      padding: 20px;
+      border-radius: 10px;
+      min-width: 280px;
+      z-index: 100;
+    }
+
+    .controls h2 {
+      margin-bottom: 15px;
+      font-size: 1.2em;
+      color: #ce93d8;
+    }
+
+    .control-group {
+      margin-bottom: 15px;
+    }
+
+    .control-group label {
+      display: block;
+      margin-bottom: 5px;
+      font-size: 0.9em;
+      color: #aaa;
+    }
+
+    .control-group input[type="range"] {
+      width: 100%;
+      margin-bottom: 5px;
+    }
+
+    .control-group .value {
+      font-size: 0.85em;
+      color: #ce93d8;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      flex: 1;
+      min-width: 80px;
+      padding: 10px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 0.85em;
+      transition: all 0.3s;
+    }
+
+    .btn-add {
+      background: #4caf50;
+      color: white;
+    }
+
+    .btn-add:hover {
+      background: #43a047;
+    }
+
+    .btn-remove {
+      background: #f44336;
+      color: white;
+    }
+
+    .btn-remove:hover {
+      background: #e53935;
+    }
+
+    .btn-update {
+      background: #2196f3;
+      color: white;
+    }
+
+    .btn-update:hover {
+      background: #1e88e5;
+    }
+
+    .btn-rebuild {
+      background: #ff9800;
+      color: white;
+    }
+
+    .btn-rebuild:hover {
+      background: #fb8c00;
+    }
+
+    .stats {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      background: rgba(0, 0, 0, 0.8);
+      padding: 20px;
+      border-radius: 10px;
+      min-width: 200px;
+      z-index: 100;
+    }
+
+    .stats h3 {
+      margin-bottom: 10px;
+      font-size: 1em;
+      color: #ce93d8;
+    }
+
+    .stat-item {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 8px;
+      font-size: 0.9em;
+    }
+
+    .stat-item .label {
+      color: #aaa;
+    }
+
+    .stat-item .value {
+      color: #ce93d8;
+      font-weight: bold;
+    }
+
+    .info {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      background: rgba(0, 0, 0, 0.8);
+      padding: 15px;
+      border-radius: 10px;
+      font-size: 0.85em;
+      color: #aaa;
+      max-width: 400px;
+    }
+
+    .info h4 {
+      color: #ce93d8;
+      margin-bottom: 8px;
+    }
+
+    .operation-log {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      background: rgba(0, 0, 0, 0.8);
+      padding: 15px;
+      border-radius: 10px;
+      min-width: 250px;
+      max-height: 200px;
+      overflow-y: auto;
+      z-index: 100;
+    }
+
+    .operation-log h4 {
+      color: #ce93d8;
+      margin-bottom: 10px;
+    }
+
+    .log-item {
+      font-size: 0.8em;
+      padding: 5px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .log-item.add {
+      color: #4caf50;
+    }
+
+    .log-item.remove {
+      color: #f44336;
+    }
+
+    .log-item.update {
+      color: #2196f3;
+    }
+
+    .log-item.rebuild {
+      color: #ff9800;
+    }
+
+    .log-item .time {
+      color: #666;
+      margin-left: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div id="canvas-container">
+    <canvas id="canvas"></canvas>
+  </div>
+
+  <div class="controls">
+    <h2>🔄 动态对象管理</h2>
+    
+    <div class="control-group">
+      <label>初始对象数量</label>
+      <input type="range" id="initialCount" min="10" max="500" value="100" step="10">
+      <span class="value" id="initialCountValue">100</span>
+    </div>
+
+    <div class="control-group">
+      <label>批量操作数量</label>
+      <input type="range" id="batchSize" min="1" max="50" value="10" step="1">
+      <span class="value" id="batchSizeValue">10</span>
+    </div>
+
+    <div class="control-group">
+      <label>对象移动速度</label>
+      <input type="range" id="moveSpeed" min="0" max="100" value="30" step="1">
+      <span class="value" id="moveSpeedValue">30</span>
+    </div>
+
+    <div class="btn-group">
+      <button class="btn btn-add" id="addBtn">➕ 添加</button>
+      <button class="btn btn-remove" id="removeBtn">➖ 删除</button>
+    </div>
+    
+    <div class="btn-group" style="margin-top: 10px;">
+      <button class="btn btn-update" id="updateBtn">🔄 更新位置</button>
+      <button class="btn btn-rebuild" id="rebuildBtn">🏗️ 重建树</button>
+    </div>
+  </div>
+
+  <div class="stats">
+    <h3>📊 BVH 状态</h3>
+    <div class="stat-item">
+      <span class="label">FPS</span>
+      <span class="value" id="fps">0</span>
+    </div>
+    <div class="stat-item">
+      <span class="label">对象数量</span>
+      <span class="value" id="objectCount">0</span>
+    </div>
+    <div class="stat-item">
+      <span class="label">节点数量</span>
+      <span class="value" id="nodeCount">0</span>
+    </div>
+    <div class="stat-item">
+      <span class="label">树深度</span>
+      <span class="value" id="treeDepth">0</span>
+    </div>
+    <div class="stat-item">
+      <span class="label">平衡因子</span>
+      <span class="value" id="balanceFactor">0</span>
+    </div>
+    <div class="stat-item">
+      <span class="label">树状态</span>
+      <span class="value" id="treeValid">-</span>
+    </div>
+  </div>
+
+  <div class="info">
+    <h4>使用说明</h4>
+    <p>
+      此演示展示了 BVH 的动态操作能力。您可以：<br>
+      • 添加/删除对象<br>
+      • 更新对象位置（自动更新包围盒）<br>
+      • 重建整个树结构<br>
+      对象会自动移动，BVH 会实时更新。
+    </p>
+  </div>
+
+  <div class="operation-log">
+    <h4>📝 操作日志</h4>
+    <div id="logContainer"></div>
+  </div>
+
+  <script type="module" src="../src/dynamic-objects.ts"></script>
+</body>
+</html>
