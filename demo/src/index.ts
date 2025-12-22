@@ -12,9 +12,12 @@ document.addEventListener('DOMContentLoaded', function () {
     element.style.transform = 'translateY(20px)';
     element.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
 
-    setTimeout(() => {
-      element.style.opacity = '1';
-      element.style.transform = 'translateY(0)';
-    }, 100 + index * 100);
+    setTimeout(
+      () => {
+        element.style.opacity = '1';
+        element.style.transform = 'translateY(0)';
+      },
+      100 + index * 100,
+    );
   });
 });

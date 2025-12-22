@@ -1,5 +1,4 @@
 import type { BoundingBox } from '@galacean/engine-math';
-import type { BVHNode } from './BVHNode';
 
 /**
  * BVH 树统计信息
@@ -27,22 +26,6 @@ export interface BVHInsertObject {
   bounds: BoundingBox;
   /** 用户数据 */
   userData?: any;
-}
-
-/**
- * 碰撞检测结果
- */
-export interface CollisionResult {
-  /** 碰撞的对象（userData） */
-  object: any;
-  /** 碰撞距离 */
-  distance: number;
-  /** 碰撞点位置 */
-  point?: { x: number; y: number; z: number };
-  /** 碰撞法线 */
-  normal?: { x: number; y: number; z: number };
-  /** 碰撞的节点 */
-  node: BVHNode;
 }
 
 /**

@@ -1,12 +1,12 @@
 /**
  * BVH Performance Benchmark Demo
  * 对比不同构建策略的性能表现
- * 
+ *
  * 注意：这个 demo 主要是数据展示，不需要 3D 渲染
  */
 
-import { Vector3, BoundingBox } from '@galacean/engine-math';
-import { BVHTree, BVHBuilder, Ray, BVHBuildStrategy } from '../../dist/index.mjs';
+import { BoundingBox, Vector3 } from '@galacean/engine-math';
+import { BVHBuilder, BVHBuildStrategy, Ray } from '../../dist/index.mjs';
 
 // ============ 类型定义 ============
 
@@ -64,11 +64,11 @@ function generateTestObjects(count: number) {
     const x = (Math.random() - 0.5) * config.sceneSize;
     const y = (Math.random() - 0.5) * config.sceneSize;
     const z = (Math.random() - 0.5) * config.sceneSize;
-    
+
     objs.push({
       bounds: new BoundingBox(
-        new Vector3(x - size/2, y - size/2, z - size/2),
-        new Vector3(x + size/2, y + size/2, z + size/2)
+        new Vector3(x - size / 2, y - size / 2, z - size / 2),
+        new Vector3(x + size / 2, y + size / 2, z + size / 2),
       ),
       userData: { id: i },
     });
@@ -82,13 +82,9 @@ function generateRays(count: number) {
     const origin = new Vector3(
       (Math.random() - 0.5) * config.sceneSize * 2,
       (Math.random() - 0.5) * config.sceneSize * 2,
-      (Math.random() - 0.5) * config.sceneSize * 2
+      (Math.random() - 0.5) * config.sceneSize * 2,
     );
-    const direction = new Vector3(
-      Math.random() - 0.5,
-      Math.random() - 0.5,
-      Math.random() - 0.5
-    );
+    const direction = new Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5);
     direction.normalize();
     rays.push(new Ray(origin, direction));
   }
@@ -98,11 +94,13 @@ function generateRays(count: number) {
 function generateQueryPoints(count: number) {
   const points = [];
   for (let i = 0; i < count; i++) {
-    points.push(new Vector3(
-      (Math.random() - 0.5) * config.sceneSize,
-      (Math.random() - 0.5) * config.sceneSize,
-      (Math.random() - 0.5) * config.sceneSize
-    ));
+    points.push(
+      new Vector3(
+        (Math.random() - 0.5) * config.sceneSize,
+        (Math.random() - 0.5) * config.sceneSize,
+        (Math.random() - 0.5) * config.sceneSize,
+      ),
+    );
   }
   return points;
 }
@@ -113,7 +111,7 @@ async function runStrategyBenchmark(
   strategy: { name: string; value: BVHBuildStrategy },
   objects: any[],
   rays: Ray[],
-  queryPoints: Vector3[]
+  queryPoints: Vector3[],
 ) {
   const result = {
     buildTimes: [] as number[],
@@ -167,8 +165,9 @@ function updateResults(): void {
   // 构建时间表格
   const buildBody = document.getElementById('buildResults');
   let buildHtml = '';
-  let minBuild = Infinity, maxBuild = 0;
-  
+  let minBuild = Infinity,
+    maxBuild = 0;
+
   for (const s of strategies) {
     const data = results.build[s.name];
     if (data) {
@@ -176,7 +175,7 @@ function updateResults(): void {
       maxBuild = Math.max(maxBuild, data.avg);
     }
   }
-  
+
   for (const s of strategies) {
     const data = results.build[s.name];
     if (data) {
@@ -196,14 +195,14 @@ function updateResults(): void {
   const raycastBody = document.getElementById('raycastResults');
   let raycastHtml = '';
   let maxQPS = 0;
-  
+
   for (const s of strategies) {
     const data = results.raycast[s.name];
     if (data && data.qps) {
       maxQPS = Math.max(maxQPS, data.qps);
     }
   }
-  
+
   for (const s of strategies) {
     const data = results.raycast[s.name];
     if (data) {
@@ -221,7 +220,7 @@ function updateResults(): void {
   // 范围查询表格
   const rangeBody = document.getElementById('rangeResults');
   let rangeHtml = '';
-  
+
   for (const s of strategies) {
     const data = results.range[s.name];
     if (data) {
@@ -238,7 +237,7 @@ function updateResults(): void {
   // 树统计表格
   const statsBody = document.getElementById('treeStats');
   let statsHtml = '';
-  
+
   for (const s of strategies) {
     const data = results.stats[s.name];
     if (data) {
@@ -265,7 +264,7 @@ function updateCharts(): void {
     const data = results.build[s.name];
     if (data) maxBuildTime = Math.max(maxBuildTime, data.avg);
   }
-  
+
   for (const s of strategies) {
     const data = results.build[s.name];
     const bar = document.getElementById(`buildBar${s.name}`);
@@ -282,7 +281,7 @@ function updateCharts(): void {
     const data = results.raycast[s.name];
     if (data && data.qps) maxQPS = Math.max(maxQPS, data.qps);
   }
-  
+
   for (const s of strategies) {
     const data = results.raycast[s.name];
     const bar = document.getElementById(`queryBar${s.name}`);
@@ -299,35 +298,35 @@ function updateCharts(): void {
 async function runBenchmark(): Promise<void> {
   const btn = document.getElementById('runBenchmark') as HTMLButtonElement;
   const progressContainer = document.getElementById('progressContainer');
-  
+
   if (btn) btn.disabled = true;
   if (progressContainer) progressContainer.classList.add('active');
-  
+
   // 重置结果
   results = { build: {}, raycast: {}, range: {}, stats: {} };
-  
+
   // 读取配置
   const objectCountEl = document.getElementById('objectCount') as HTMLSelectElement;
   const raycastCountEl = document.getElementById('raycastCount') as HTMLSelectElement;
   const rangeQueryCountEl = document.getElementById('rangeQueryCount') as HTMLSelectElement;
   const iterationsEl = document.getElementById('iterations') as HTMLSelectElement;
-  
+
   config.objectCount = parseInt(objectCountEl?.value || '10000');
   config.raycastCount = parseInt(raycastCountEl?.value || '1000');
   config.rangeQueryCount = parseInt(rangeQueryCountEl?.value || '1000');
   config.iterations = parseInt(iterationsEl?.value || '3');
-  
+
   const totalSteps = strategies.length * config.iterations;
   let currentStep = 0;
-  
+
   // 生成测试数据
   updateProgress(0, '生成测试数据...');
-  await new Promise(r => setTimeout(r, 100));
-  
+  await new Promise((r) => setTimeout(r, 100));
+
   const objects = generateTestObjects(config.objectCount);
   const rays = generateRays(config.raycastCount);
   const queryPoints = generateQueryPoints(config.rangeQueryCount);
-  
+
   // 运行每个策略的测试
   for (const strategy of strategies) {
     const strategyResults = {
@@ -338,15 +337,15 @@ async function runBenchmark(): Promise<void> {
       rangeResultCount: 0,
       stats: null as TreeStats | null,
     };
-    
+
     for (let i = 0; i < config.iterations; i++) {
       currentStep++;
       const percent = (currentStep / totalSteps) * 100;
       updateProgress(percent, `测试 ${strategy.name} 策略 (${i + 1}/${config.iterations})...`);
-      await new Promise(r => setTimeout(r, 50));
-      
+      await new Promise((r) => setTimeout(r, 50));
+
       const iterResult = await runStrategyBenchmark(strategy, objects, rays, queryPoints);
-      
+
       strategyResults.buildTimes.push(...iterResult.buildTimes);
       strategyResults.raycastTimes.push(...iterResult.raycastTimes);
       strategyResults.rangeTimes.push(...iterResult.rangeTimes);
@@ -354,18 +353,21 @@ async function runBenchmark(): Promise<void> {
       strategyResults.rangeResultCount += iterResult.rangeResultCount;
       strategyResults.stats = iterResult.stats;
     }
-    
+
     // 计算统计数据
-    const avgBuild = strategyResults.buildTimes.reduce((a, b) => a + b, 0) / strategyResults.buildTimes.length;
-    const avgRaycast = strategyResults.raycastTimes.reduce((a, b) => a + b, 0) / strategyResults.raycastTimes.length;
-    const avgRange = strategyResults.rangeTimes.reduce((a, b) => a + b, 0) / strategyResults.rangeTimes.length;
-    
+    const avgBuild =
+      strategyResults.buildTimes.reduce((a, b) => a + b, 0) / strategyResults.buildTimes.length;
+    const avgRaycast =
+      strategyResults.raycastTimes.reduce((a, b) => a + b, 0) / strategyResults.raycastTimes.length;
+    const avgRange =
+      strategyResults.rangeTimes.reduce((a, b) => a + b, 0) / strategyResults.rangeTimes.length;
+
     results.build[strategy.name] = {
       avg: avgBuild,
       min: Math.min(...strategyResults.buildTimes),
       max: Math.max(...strategyResults.buildTimes),
     };
-    
+
     results.raycast[strategy.name] = {
       avg: avgRaycast,
       min: 0,
@@ -373,7 +375,7 @@ async function runBenchmark(): Promise<void> {
       qps: (config.raycastCount / avgRaycast) * 1000,
       hitRate: (strategyResults.hitCount / (config.raycastCount * config.iterations)) * 100,
     };
-    
+
     results.range[strategy.name] = {
       avg: avgRange,
       min: 0,
@@ -381,17 +383,17 @@ async function runBenchmark(): Promise<void> {
       qps: (config.rangeQueryCount / avgRange) * 1000,
       avgResults: strategyResults.rangeResultCount / (config.rangeQueryCount * config.iterations),
     };
-    
+
     if (strategyResults.stats) {
       results.stats[strategy.name] = strategyResults.stats;
     }
-    
+
     updateResults();
   }
-  
+
   updateProgress(100, '测试完成！');
   if (btn) btn.disabled = false;
-  
+
   setTimeout(() => {
     if (progressContainer) progressContainer.classList.remove('active');
   }, 2000);

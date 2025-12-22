@@ -554,24 +554,4 @@ export class BVHBuilder {
 
     return { axis: bestAxis, position: bestPosition, cost: bestCost };
   }
-
-  /**
-   * SAH 策略：寻找最佳分割位置（兼容旧接口）
-   *
-   * @deprecated 使用 findBestSplitSAH 代替
-   */
-  private static findBestSplitPositionSAH(
-    objects: BVHInsertObject[],
-    axis: number,
-    parentAABB: AABB,
-  ): number {
-    const result = this.findBestSplitSAH(objects, parentAABB);
-    // 如果最佳轴与指定轴相同，返回最佳位置
-    if (result.axis === axis) {
-      return result.position;
-    }
-    // 否则使用指定轴的中点
-    const center = parentAABB.getCenter();
-    return this.getAxisValue({ x: center.x, y: center.y, z: center.z }, axis);
-  }
 }

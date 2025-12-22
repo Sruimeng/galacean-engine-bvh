@@ -14,9 +14,6 @@ export class AABB extends BoundingVolume {
   /** 最大角点 */
   public max: Vector3;
 
-  /** 复用的临时向量，用于射线相交计算 */
-  private static readonly _tempInvDir = new Vector3();
-
   /**
    * 创建 AABB
    * @param min - 最小角点 (默认: +∞)
@@ -67,32 +64,50 @@ export class AABB extends BoundingVolume {
    * @returns 相交距离，如果不相交返回 null
    */
   intersectRayDistance(ray: Ray): number | null {
-    // 复用静态向量避免每次创建新对象
-    const invDir = AABB._tempInvDir;
-    invDir.x = 1 / ray.direction.x;
-    invDir.y = 1 / ray.direction.y;
-    invDir.z = 1 / ray.direction.z;
-
     let tMin = -Infinity;
     let tMax = Infinity;
 
-    // X 轴
-    const t1 = (this.min.x - ray.origin.x) * invDir.x;
-    const t2 = (this.max.x - ray.origin.x) * invDir.x;
-    tMin = Math.max(tMin, Math.min(t1, t2));
-    tMax = Math.min(tMax, Math.max(t1, t2));
+    // X 轴 - 处理方向为0的情况
+    if (ray.direction.x === 0) {
+      // 射线平行于 YZ 平面，检查原点是否在 X 范围内
+      if (ray.origin.x < this.min.x || ray.origin.x > this.max.x) {
+        return null;
+      }
+    } else {
+      const invDirX = 1 / ray.direction.x;
+      const t1 = (this.min.x - ray.origin.x) * invDirX;
+      const t2 = (this.max.x - ray.origin.x) * invDirX;
+      tMin = Math.max(tMin, Math.min(t1, t2));
+      tMax = Math.min(tMax, Math.max(t1, t2));
+    }
 
-    // Y 轴
-    const t3 = (this.min.y - ray.origin.y) * invDir.y;
-    const t4 = (this.max.y - ray.origin.y) * invDir.y;
-    tMin = Math.max(tMin, Math.min(t3, t4));
-    tMax = Math.min(tMax, Math.max(t3, t4));
+    // Y 轴 - 处理方向为0的情况
+    if (ray.direction.y === 0) {
+      // 射线平行于 XZ 平面，检查原点是否在 Y 范围内
+      if (ray.origin.y < this.min.y || ray.origin.y > this.max.y) {
+        return null;
+      }
+    } else {
+      const invDirY = 1 / ray.direction.y;
+      const t3 = (this.min.y - ray.origin.y) * invDirY;
+      const t4 = (this.max.y - ray.origin.y) * invDirY;
+      tMin = Math.max(tMin, Math.min(t3, t4));
+      tMax = Math.min(tMax, Math.max(t3, t4));
+    }
 
-    // Z 轴
-    const t5 = (this.min.z - ray.origin.z) * invDir.z;
-    const t6 = (this.max.z - ray.origin.z) * invDir.z;
-    tMin = Math.max(tMin, Math.min(t5, t6));
-    tMax = Math.min(tMax, Math.max(t5, t6));
+    // Z 轴 - 处理方向为0的情况
+    if (ray.direction.z === 0) {
+      // 射线平行于 XY 平面，检查原点是否在 Z 范围内
+      if (ray.origin.z < this.min.z || ray.origin.z > this.max.z) {
+        return null;
+      }
+    } else {
+      const invDirZ = 1 / ray.direction.z;
+      const t5 = (this.min.z - ray.origin.z) * invDirZ;
+      const t6 = (this.max.z - ray.origin.z) * invDirZ;
+      tMin = Math.max(tMin, Math.min(t5, t6));
+      tMax = Math.min(tMax, Math.max(t5, t6));
+    }
 
     // 检查是否相交
     if (tMax >= Math.max(tMin, 0)) {
