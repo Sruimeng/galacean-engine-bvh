@@ -159,6 +159,44 @@ function updateProgress(percent: number, text: string): void {
   if (progressText) progressText.textContent = text;
 }
 
+// ============ 更新图表 ============
+
+function updateCharts(): void {
+  // 构建时间图表
+  let maxBuildTime = 0;
+  for (const s of strategies) {
+    const data = results.build[s.name];
+    if (data) maxBuildTime = Math.max(maxBuildTime, data.avg);
+  }
+
+  for (const s of strategies) {
+    const data = results.build[s.name];
+    const bar = document.getElementById(`buildBar${s.name}`);
+    if (data && bar) {
+      const percent = (data.avg / maxBuildTime) * 100;
+      bar.style.width = `${percent}%`;
+      bar.textContent = `${data.avg.toFixed(1)} ms`;
+    }
+  }
+
+  // 查询性能图表
+  let maxQPS = 0;
+  for (const s of strategies) {
+    const data = results.raycast[s.name];
+    if (data && data.qps) maxQPS = Math.max(maxQPS, data.qps);
+  }
+
+  for (const s of strategies) {
+    const data = results.raycast[s.name];
+    const bar = document.getElementById(`queryBar${s.name}`);
+    if (data && bar && data.qps) {
+      const percent = (data.qps / maxQPS) * 100;
+      bar.style.width = `${percent}%`;
+      bar.textContent = `${data.qps.toFixed(0)} /s`;
+    }
+  }
+}
+
 // ============ 更新结果表格 ============
 
 function updateResults(): void {
@@ -253,44 +291,6 @@ function updateResults(): void {
 
   // 更新图表
   updateCharts();
-}
-
-// ============ 更新图表 ============
-
-function updateCharts(): void {
-  // 构建时间图表
-  let maxBuildTime = 0;
-  for (const s of strategies) {
-    const data = results.build[s.name];
-    if (data) maxBuildTime = Math.max(maxBuildTime, data.avg);
-  }
-
-  for (const s of strategies) {
-    const data = results.build[s.name];
-    const bar = document.getElementById(`buildBar${s.name}`);
-    if (data && bar) {
-      const percent = (data.avg / maxBuildTime) * 100;
-      bar.style.width = `${percent}%`;
-      bar.textContent = `${data.avg.toFixed(1)} ms`;
-    }
-  }
-
-  // 查询性能图表
-  let maxQPS = 0;
-  for (const s of strategies) {
-    const data = results.raycast[s.name];
-    if (data && data.qps) maxQPS = Math.max(maxQPS, data.qps);
-  }
-
-  for (const s of strategies) {
-    const data = results.raycast[s.name];
-    const bar = document.getElementById(`queryBar${s.name}`);
-    if (data && bar && data.qps) {
-      const percent = (data.qps / maxQPS) * 100;
-      bar.style.width = `${percent}%`;
-      bar.textContent = `${data.qps.toFixed(0)} /s`;
-    }
-  }
 }
 
 // ============ 运行完整基准测试 ============

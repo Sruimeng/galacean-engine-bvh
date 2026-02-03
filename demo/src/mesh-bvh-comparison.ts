@@ -1,6 +1,6 @@
 /**
  * Mesh BVH 性能对比测试
- * 
+ *
  * 这个 demo 展示了 BVH 加速与暴力遍历的性能对比：
  * 1. 创建大量3D对象
  * 2. 实时对比 BVH raycast 和暴力法 raycast 的性能
@@ -21,6 +21,33 @@ import {
 import { BoundingBox, Vector3 } from '@galacean/engine-math';
 import type { BVHTree } from '../../dist/index.mjs';
 import { AABB, BVHBuilder, BVHBuildStrategy, Ray } from '../../dist/index.mjs';
+
+// ============ 工具函数 ============
+
+function hslToRgb(h: number, s: number, l: number): { r: number; g: number; b: number } {
+  let r, g, b;
+
+  if (s === 0) {
+    r = g = b = l;
+  } else {
+    const hue2rgb = (p: number, q: number, t: number) => {
+      if (t < 0) t += 1;
+      if (t > 1) t -= 1;
+      if (t < 1 / 6) return p + (q - p) * 6 * t;
+      if (t < 1 / 2) return q;
+      if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+      return p;
+    };
+
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+    r = hue2rgb(p, q, h + 1 / 3);
+    g = hue2rgb(p, q, h);
+    b = hue2rgb(p, q, h - 1 / 3);
+  }
+
+  return { r, g, b };
+}
 
 // ============ 类型定义 ============
 
@@ -70,10 +97,16 @@ let lastTime = performance.now();
 let frameCount = 0;
 let fps = 0;
 
-// 累计统计
-let totalRaycastTime = 0;
-let totalRaycastCount = 0;
-let totalHitCount = 0;
+// ============ 相机控制 ============
+
+function updateCameraPosition(): void {
+  const x = cameraRadius * Math.sin(cameraPhi) * Math.cos(cameraTheta);
+  const y = cameraRadius * Math.cos(cameraPhi);
+  const z = cameraRadius * Math.sin(cameraPhi) * Math.sin(cameraTheta);
+
+  cameraEntity.transform.setPosition(x, y, z);
+  cameraEntity.transform.lookAt(new GalaceanVector3(0, 0, 0));
+}
 
 // ============ 初始化引擎 ============
 
@@ -109,17 +142,6 @@ async function initEngine(): Promise<void> {
   directLight2.intensity = 0.5;
 
   console.log('Galacean Engine 初始化完成');
-}
-
-// ============ 相机控制 ============
-
-function updateCameraPosition(): void {
-  const x = cameraRadius * Math.sin(cameraPhi) * Math.cos(cameraTheta);
-  const y = cameraRadius * Math.cos(cameraPhi);
-  const z = cameraRadius * Math.sin(cameraPhi) * Math.sin(cameraTheta);
-
-  cameraEntity.transform.setPosition(x, y, z);
-  cameraEntity.transform.lookAt(new GalaceanVector3(0, 0, 0));
 }
 
 function setupMouseControls(): void {
@@ -190,16 +212,12 @@ function createSceneObjects(count: number): void {
     entity.transform.setScale(scale, scale, scale);
 
     // 随机旋转
-    entity.transform.setRotation(
-      Math.random() * 360,
-      Math.random() * 360,
-      Math.random() * 360
-    );
+    entity.transform.setRotation(Math.random() * 360, Math.random() * 360, Math.random() * 360);
 
     // 添加 MeshRenderer
     const renderer = entity.addComponent(MeshRenderer);
     const meshType = meshTypes[Math.floor(Math.random() * meshTypes.length)];
-    
+
     switch (meshType) {
       case 'sphere':
         renderer.mesh = PrimitiveMesh.createSphere(engine, 0.5, 16, 16);
@@ -223,7 +241,7 @@ function createSceneObjects(count: number): void {
     const bounds = renderer.bounds;
     const boundingBox = new BoundingBox(
       new Vector3(bounds.min.x, bounds.min.y, bounds.min.z),
-      new Vector3(bounds.max.x, bounds.max.y, bounds.max.z)
+      new Vector3(bounds.max.x, bounds.max.y, bounds.max.z),
     );
 
     const obj: SceneObject = {
@@ -299,7 +317,7 @@ function bruteForceRaycast(ray: Ray, maxDistance: number): RaycastHit | null {
 
     const aabb = new AABB(
       new Vector3(bounds.min.x, bounds.min.y, bounds.min.z),
-      new Vector3(bounds.max.x, bounds.max.y, bounds.max.z)
+      new Vector3(bounds.max.x, bounds.max.y, bounds.max.z),
     );
 
     const distance = aabb.intersectRayDistance(ray);
@@ -331,14 +349,10 @@ function performRaycasts(): void {
     const origin = new Vector3(
       (Math.random() - 0.5) * config.sceneSize * 2,
       (Math.random() - 0.5) * config.sceneSize * 2,
-      (Math.random() - 0.5) * config.sceneSize * 2
+      (Math.random() - 0.5) * config.sceneSize * 2,
     );
 
-    const direction = new Vector3(
-      Math.random() - 0.5,
-      Math.random() - 0.5,
-      Math.random() - 0.5
-    );
+    const direction = new Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5);
     direction.normalize();
 
     const ray = new Ray(origin, direction);
@@ -359,11 +373,6 @@ function performRaycasts(): void {
   }
 
   const raycastTime = performance.now() - startTime;
-
-  // 更新累计统计
-  totalRaycastTime += raycastTime;
-  totalRaycastCount += config.rayCount;
-  totalHitCount += hitCount;
 
   // 更新 UI
   const raycastTimeEl = document.getElementById('raycastTime');
@@ -411,13 +420,9 @@ function runPerformanceComparison(): void {
     const origin = new Vector3(
       (Math.random() - 0.5) * config.sceneSize * 2,
       (Math.random() - 0.5) * config.sceneSize * 2,
-      (Math.random() - 0.5) * config.sceneSize * 2
+      (Math.random() - 0.5) * config.sceneSize * 2,
     );
-    const direction = new Vector3(
-      Math.random() - 0.5,
-      Math.random() - 0.5,
-      Math.random() - 0.5
-    );
+    const direction = new Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5);
     direction.normalize();
     rays.push(new Ray(origin, direction));
   }
@@ -507,10 +512,6 @@ function toggleBVH(): void {
     }
   }
 
-  // 重置统计
-  totalRaycastTime = 0;
-  totalRaycastCount = 0;
-  totalHitCount = 0;
 }
 
 // ============ 动画循环 ============
@@ -572,10 +573,6 @@ function setupEventListeners(): void {
     rebuildBtn.addEventListener('click', () => {
       createSceneObjects(config.objectCount);
       buildBVH();
-      // 重置统计
-      totalRaycastTime = 0;
-      totalRaycastCount = 0;
-      totalHitCount = 0;
     });
   }
 
@@ -590,33 +587,6 @@ function setupEventListeners(): void {
   window.addEventListener('resize', () => {
     engine.canvas.resizeByClientSize();
   });
-}
-
-// ============ 工具函数 ============
-
-function hslToRgb(h: number, s: number, l: number): { r: number; g: number; b: number } {
-  let r, g, b;
-
-  if (s === 0) {
-    r = g = b = l;
-  } else {
-    const hue2rgb = (p: number, q: number, t: number) => {
-      if (t < 0) t += 1;
-      if (t > 1) t -= 1;
-      if (t < 1 / 6) return p + (q - p) * 6 * t;
-      if (t < 1 / 2) return q;
-      if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
-      return p;
-    };
-
-    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-    const p = 2 * l - q;
-    r = hue2rgb(p, q, h + 1 / 3);
-    g = hue2rgb(p, q, h);
-    b = hue2rgb(p, q, h - 1 / 3);
-  }
-
-  return { r, g, b };
 }
 
 // ============ 主入口 ============

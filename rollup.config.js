@@ -10,6 +10,6 @@ export default {
     format: 'esm',
     sourcemap: true,
   },
-  external: ['@galacean/engine-math', 'eventemitter3'],
+  external: ['@galacean/engine', '@galacean/engine-math'],
   plugins: getPlugins(pkg, { target: 'ES2020' }),
 };

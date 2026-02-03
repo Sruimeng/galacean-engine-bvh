@@ -1,4 +1,5 @@
-import { BoundingBox, Vector3 } from '@galacean/engine-math';
+import type { BoundingBox } from '@galacean/engine-math';
+import { Vector3 } from '@galacean/engine-math';
 import { AABB } from './AABB';
 import { BVHBuildStrategy } from './enums';
 import type { Ray } from './Ray';
@@ -63,10 +64,10 @@ const SAH_BIN_COUNT = 32;
 
 /**
  * MeshBVH - 三角形级别的 BVH
- * 
+ *
  * 用于对单个 Mesh 内部的三角形进行 BVH 加速，
  * 实现精确的射线-三角形相交测试。
- * 
+ *
  * 参考 three-mesh-bvh 的实现思路。
  */
 export class MeshBVH {
@@ -90,7 +91,7 @@ export class MeshBVH {
   constructor(
     maxLeafTriangles: number = 10,
     maxDepth: number = 40,
-    strategy: BVHBuildStrategy = BVHBuildStrategy.SAH
+    strategy: BVHBuildStrategy = BVHBuildStrategy.SAH,
   ) {
     this.maxLeafTriangles = Math.max(1, maxLeafTriangles);
     this.maxDepth = Math.max(1, maxDepth);
@@ -106,7 +107,7 @@ export class MeshBVH {
   buildFromGeometry(
     positions: Float32Array | number[],
     indices?: Uint16Array | Uint32Array | number[],
-    userData?: any
+    userData?: any,
   ): void {
     this.triangles = [];
 
@@ -179,7 +180,7 @@ export class MeshBVH {
 
     // 根据策略选择分割方式
     let splitResult: { left: Triangle[]; right: Triangle[] };
-    
+
     switch (this.strategy) {
       case BVHBuildStrategy.SAH:
         splitResult = this.splitSAH(triangles, bounds);
@@ -255,7 +256,10 @@ export class MeshBVH {
   /**
    * SAH 分割策略
    */
-  private splitSAH(triangles: Triangle[], parentBounds: AABB): { left: Triangle[]; right: Triangle[] } {
+  private splitSAH(
+    triangles: Triangle[],
+    parentBounds: AABB,
+  ): { left: Triangle[]; right: Triangle[] } {
     const parentSA = parentBounds.surfaceArea();
     if (parentSA <= 0) {
       return this.splitMedian(triangles, parentBounds);
@@ -266,12 +270,14 @@ export class MeshBVH {
     let bestCost = TRIANGLE_INTERSECT_COST * triangles.length;
 
     // 预计算三角形中心点
-    const centers = triangles.map(tri => tri.getCenter());
+    const centers = triangles.map((tri) => tri.getCenter());
 
     // 遍历三个轴
     for (let axis = 0; axis < 3; axis++) {
-      const axisMin = axis === 0 ? parentBounds.min.x : axis === 1 ? parentBounds.min.y : parentBounds.min.z;
-      const axisMax = axis === 0 ? parentBounds.max.x : axis === 1 ? parentBounds.max.y : parentBounds.max.z;
+      const axisMin =
+        axis === 0 ? parentBounds.min.x : axis === 1 ? parentBounds.min.y : parentBounds.min.z;
+      const axisMax =
+        axis === 0 ? parentBounds.max.x : axis === 1 ? parentBounds.max.y : parentBounds.max.z;
       const axisRange = axisMax - axisMin;
 
       if (axisRange <= 0) continue;
@@ -379,7 +385,10 @@ export class MeshBVH {
   /**
    * 中位数分割策略
    */
-  private splitMedian(triangles: Triangle[], parentBounds: AABB): { left: Triangle[]; right: Triangle[] } {
+  private splitMedian(
+    triangles: Triangle[],
+    parentBounds: AABB,
+  ): { left: Triangle[]; right: Triangle[] } {
     // 选择最长轴
     const sizeX = parentBounds.max.x - parentBounds.min.x;
     const sizeY = parentBounds.max.y - parentBounds.min.y;
@@ -408,7 +417,10 @@ export class MeshBVH {
   /**
    * 均等分割策略
    */
-  private splitEqual(triangles: Triangle[], parentBounds: AABB): { left: Triangle[]; right: Triangle[] } {
+  private splitEqual(
+    triangles: Triangle[],
+    parentBounds: AABB,
+  ): { left: Triangle[]; right: Triangle[] } {
     // 选择最长轴
     const sizeX = parentBounds.max.x - parentBounds.min.x;
     const sizeY = parentBounds.max.y - parentBounds.min.y;
@@ -450,7 +462,11 @@ export class MeshBVH {
    * @param cullBackface - 是否剔除背面
    * @returns 相交结果数组（按距离排序）
    */
-  raycast(ray: Ray, maxDistance: number = Infinity, cullBackface: boolean = false): MeshRaycastHit[] {
+  raycast(
+    ray: Ray,
+    maxDistance: number = Infinity,
+    cullBackface: boolean = false,
+  ): MeshRaycastHit[] {
     const results: MeshRaycastHit[] = [];
 
     if (!this.root) return results;
@@ -470,7 +486,11 @@ export class MeshBVH {
    * @param cullBackface - 是否剔除背面
    * @returns 最近的相交结果，如果没有相交返回 null
    */
-  raycastFirst(ray: Ray, maxDistance: number = Infinity, cullBackface: boolean = false): MeshRaycastHit | null {
+  raycastFirst(
+    ray: Ray,
+    maxDistance: number = Infinity,
+    cullBackface: boolean = false,
+  ): MeshRaycastHit | null {
     if (!this.root) return null;
 
     let closestHit: MeshRaycastHit | null = null;
@@ -494,7 +514,7 @@ export class MeshBVH {
     ray: Ray,
     maxDistance: number,
     cullBackface: boolean,
-    results: MeshRaycastHit[]
+    results: MeshRaycastHit[],
   ): void {
     // 检查射线是否与节点包围盒相交
     const boundsDistance = node.bounds.intersectRayDistance(ray);
@@ -537,7 +557,7 @@ export class MeshBVH {
     ray: Ray,
     maxDistance: number,
     cullBackface: boolean,
-    onHit: (hit: MeshRaycastHit) => void
+    onHit: (hit: MeshRaycastHit) => void,
   ): void {
     // 检查射线是否与节点包围盒相交
     const boundsDistance = node.bounds.intersectRayDistance(ray);
@@ -589,7 +609,11 @@ export class MeshBVH {
    * @param cullBackface - 是否剔除背面
    * @returns 最近的相交结果
    */
-  raycastBruteForce(ray: Ray, maxDistance: number = Infinity, cullBackface: boolean = false): MeshRaycastHit | null {
+  raycastBruteForce(
+    ray: Ray,
+    maxDistance: number = Infinity,
+    cullBackface: boolean = false,
+  ): MeshRaycastHit | null {
     let closestHit: MeshRaycastHit | null = null;
     let closestDistance = maxDistance;
 

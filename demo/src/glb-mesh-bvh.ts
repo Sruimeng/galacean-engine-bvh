@@ -1,36 +1,56 @@
 /**
  * GLB Mesh BVH 性能对比测试
- * 
+ *
  * 这个 demo 展示了三角形级别的 BVH 加速与暴力遍历的性能对比：
  * 1. 加载 GLB 模型
  * 2. 从 Mesh 中提取顶点和索引数据
  * 3. 构建三角形级别的 BVH
  * 4. 对比 BVH raycast 和暴力法 raycast 的性能
- * 
+ *
  * 参考 three-mesh-bvh 的测试方式
  */
 
-import type { Entity, GLTFResource } from '@galacean/engine';
+import type { Entity, GLTFResource, ModelMesh } from '@galacean/engine';
 import {
   AssetType,
   BlinnPhongMaterial,
   Camera,
-  Color,
   DirectLight,
   Vector3 as GalaceanVector3,
   MeshRenderer,
   PrimitiveMesh,
   WebGLEngine,
-  ModelMesh,
-  Buffer,
-  BufferBindFlag,
-  BufferUsage,
-  VertexElement,
-  VertexElementFormat,
 } from '@galacean/engine';
 import { Vector3 } from '@galacean/engine-math';
-import { MeshBVH, Ray, BVHBuildStrategy } from '../../dist/index.mjs';
-import type { MeshRaycastHit } from '../../dist/index.mjs';
+import { BVHBuildStrategy, MeshBVH, Ray } from '../../dist/index.mjs';
+
+// ============ 相机控制 ============
+
+function updateCameraPosition(): void {
+  const x = cameraRadius * Math.sin(cameraPhi) * Math.cos(cameraTheta);
+  const y = cameraRadius * Math.cos(cameraPhi);
+  const z = cameraRadius * Math.sin(cameraPhi) * Math.sin(cameraTheta);
+
+  cameraEntity.transform.setPosition(x, y, z);
+  cameraEntity.transform.lookAt(new GalaceanVector3(0, 0, 0));
+}
+
+// ============ 递归查找第一个 MeshRenderer ============
+
+function findFirstMeshRenderer(entity: Entity): MeshRenderer | null {
+  const renderer = entity.getComponent(MeshRenderer);
+  if (renderer && renderer.mesh) {
+    return renderer;
+  }
+
+  for (let i = 0; i < entity.childCount; i++) {
+    const child = entity.getChild(i);
+    const found = findFirstMeshRenderer(child);
+    if (found) return found;
+  }
+
+  return null;
+}
 
 // ============ 全局状态 ============
 
@@ -72,6 +92,50 @@ interface TestResult {
 
 let lastTestResult: TestResult | null = null;
 
+// 存储当前几何体的原始数据（用于 BVH 构建）
+let currentGeometryData: GeometryData | null = null;
+
+// ============ 更新测试结果 ============
+
+function updateTestResults(): void {
+  if (!lastTestResult) return;
+
+  const bvhTimeEl = document.getElementById('bvhTime');
+  const bruteTimeEl = document.getElementById('bruteTime');
+  const speedupEl = document.getElementById('speedup');
+  const bvhQPSEl = document.getElementById('bvhQPS');
+  const bruteQPSEl = document.getElementById('bruteQPS');
+  const bvhBarEl = document.getElementById('bvhBar');
+  const bruteBarEl = document.getElementById('bruteBar');
+  const hitRateEl = document.getElementById('hitRate');
+  const resultsPanel = document.getElementById('resultsPanel');
+
+  if (bvhTimeEl) bvhTimeEl.textContent = `${lastTestResult.bvhTime.toFixed(2)} ms`;
+  if (bruteTimeEl) bruteTimeEl.textContent = `${lastTestResult.bruteTime.toFixed(2)} ms`;
+  if (speedupEl) speedupEl.textContent = `${lastTestResult.speedup.toFixed(1)}x`;
+
+  const bvhQPS = (config.rayCount / lastTestResult.bvhTime) * 1000;
+  const bruteQPS = (config.rayCount / lastTestResult.bruteTime) * 1000;
+  if (bvhQPSEl) bvhQPSEl.textContent = bvhQPS.toFixed(0);
+  if (bruteQPSEl) bruteQPSEl.textContent = bruteQPS.toFixed(0);
+
+  // 更新进度条
+  if (bvhBarEl && bruteBarEl) {
+    const maxTime = Math.max(lastTestResult.bvhTime, lastTestResult.bruteTime);
+    bvhBarEl.style.width = `${(lastTestResult.bvhTime / maxTime) * 100}%`;
+    bruteBarEl.style.width = `${(lastTestResult.bruteTime / maxTime) * 100}%`;
+  }
+
+  // 命中率
+  if (hitRateEl) {
+    const hitRate = (lastTestResult.bvhHits / config.rayCount) * 100;
+    hitRateEl.textContent = `${hitRate.toFixed(1)}%`;
+  }
+
+  // 显示结果面板
+  if (resultsPanel) resultsPanel.style.display = 'block';
+}
+
 // ============ 初始化引擎 ============
 
 async function initEngine(): Promise<void> {
@@ -107,17 +171,6 @@ async function initEngine(): Promise<void> {
   directLight2.intensity = 0.5;
 
   console.log('Galacean Engine 初始化完成');
-}
-
-// ============ 相机控制 ============
-
-function updateCameraPosition(): void {
-  const x = cameraRadius * Math.sin(cameraPhi) * Math.cos(cameraTheta);
-  const y = cameraRadius * Math.cos(cameraPhi);
-  const z = cameraRadius * Math.sin(cameraPhi) * Math.sin(cameraTheta);
-
-  cameraEntity.transform.setPosition(x, y, z);
-  cameraEntity.transform.lookAt(new GalaceanVector3(0, 0, 0));
 }
 
 function setupMouseControls(): void {
@@ -210,7 +263,7 @@ async function loadGLBModel(url: string): Promise<void> {
 
     // 更新 UI
     if (statusEl) statusEl.textContent = '加载成功';
-    
+
     const meshInfoEl = document.getElementById('meshInfo');
     if (meshInfoEl) {
       const vertexCount = currentMesh.vertexCount;
@@ -229,24 +282,6 @@ async function loadGLBModel(url: string): Promise<void> {
     console.error('加载 GLB 失败:', error);
     if (statusEl) statusEl.textContent = `加载失败: ${error}`;
   }
-}
-
-/**
- * 递归查找第一个 MeshRenderer
- */
-function findFirstMeshRenderer(entity: Entity): MeshRenderer | null {
-  const renderer = entity.getComponent(MeshRenderer);
-  if (renderer && renderer.mesh) {
-    return renderer;
-  }
-
-  for (let i = 0; i < entity.childCount; i++) {
-    const child = entity.getChild(i);
-    const found = findFirstMeshRenderer(child);
-    if (found) return found;
-  }
-
-  return null;
 }
 
 // ============ 从 Mesh 提取几何数据 ============
@@ -374,20 +409,20 @@ function runPerformanceTest(): void {
     // 随机方向
     const theta = Math.random() * Math.PI * 2;
     const phi = Math.acos(2 * Math.random() - 1);
-    
+
     // 从包围盒外部的球面上发射
     const radius = maxSize * 2;
     const origin = new Vector3(
       center.x + radius * Math.sin(phi) * Math.cos(theta),
       center.y + radius * Math.cos(phi),
-      center.z + radius * Math.sin(phi) * Math.sin(theta)
+      center.z + radius * Math.sin(phi) * Math.sin(theta),
     );
 
     // 方向指向中心附近的随机点
     const target = new Vector3(
       center.x + (Math.random() - 0.5) * maxSize * 0.5,
       center.y + (Math.random() - 0.5) * maxSize * 0.5,
-      center.z + (Math.random() - 0.5) * maxSize * 0.5
+      center.z + (Math.random() - 0.5) * maxSize * 0.5,
     );
 
     const direction = new Vector3();
@@ -439,45 +474,6 @@ function runPerformanceTest(): void {
   console.log(`  加速比: ${speedup.toFixed(1)}x`);
 }
 
-function updateTestResults(): void {
-  if (!lastTestResult) return;
-
-  const bvhTimeEl = document.getElementById('bvhTime');
-  const bruteTimeEl = document.getElementById('bruteTime');
-  const speedupEl = document.getElementById('speedup');
-  const bvhQPSEl = document.getElementById('bvhQPS');
-  const bruteQPSEl = document.getElementById('bruteQPS');
-  const bvhBarEl = document.getElementById('bvhBar');
-  const bruteBarEl = document.getElementById('bruteBar');
-  const hitRateEl = document.getElementById('hitRate');
-  const resultsPanel = document.getElementById('resultsPanel');
-
-  if (bvhTimeEl) bvhTimeEl.textContent = `${lastTestResult.bvhTime.toFixed(2)} ms`;
-  if (bruteTimeEl) bruteTimeEl.textContent = `${lastTestResult.bruteTime.toFixed(2)} ms`;
-  if (speedupEl) speedupEl.textContent = `${lastTestResult.speedup.toFixed(1)}x`;
-
-  const bvhQPS = (config.rayCount / lastTestResult.bvhTime) * 1000;
-  const bruteQPS = (config.rayCount / lastTestResult.bruteTime) * 1000;
-  if (bvhQPSEl) bvhQPSEl.textContent = bvhQPS.toFixed(0);
-  if (bruteQPSEl) bruteQPSEl.textContent = bruteQPS.toFixed(0);
-
-  // 更新进度条
-  if (bvhBarEl && bruteBarEl) {
-    const maxTime = Math.max(lastTestResult.bvhTime, lastTestResult.bruteTime);
-    bvhBarEl.style.width = `${(lastTestResult.bvhTime / maxTime) * 100}%`;
-    bruteBarEl.style.width = `${(lastTestResult.bruteTime / maxTime) * 100}%`;
-  }
-
-  // 命中率
-  if (hitRateEl) {
-    const hitRate = (lastTestResult.bvhHits / config.rayCount) * 100;
-    hitRateEl.textContent = `${hitRate.toFixed(1)}%`;
-  }
-
-  // 显示结果面板
-  if (resultsPanel) resultsPanel.style.display = 'block';
-}
-
 // ============ 验证正确性 ============
 
 function validateCorrectness(): void {
@@ -515,13 +511,13 @@ function validateCorrectness(): void {
     const origin = new Vector3(
       center.x + radius * Math.sin(phi) * Math.cos(theta),
       center.y + radius * Math.cos(phi),
-      center.z + radius * Math.sin(phi) * Math.sin(theta)
+      center.z + radius * Math.sin(phi) * Math.sin(theta),
     );
 
     const target = new Vector3(
       center.x + (Math.random() - 0.5) * maxSize * 0.5,
       center.y + (Math.random() - 0.5) * maxSize * 0.5,
-      center.z + (Math.random() - 0.5) * maxSize * 0.5
+      center.z + (Math.random() - 0.5) * maxSize * 0.5,
     );
 
     const direction = new Vector3();
@@ -549,7 +545,7 @@ function validateCorrectness(): void {
     } else {
       failed++;
       console.warn(
-        `测试 ${i} 失败: BVH dist=${bvhDist.toFixed(6)}, 暴力法 dist=${bruteDist.toFixed(6)}`
+        `测试 ${i} 失败: BVH dist=${bvhDist.toFixed(6)}, 暴力法 dist=${bruteDist.toFixed(6)}`,
       );
     }
   }
@@ -570,13 +566,14 @@ function validateCorrectness(): void {
 
 // ============ 创建示例几何体 ============
 
-// 存储当前几何体的原始数据（用于 BVH 构建）
-let currentGeometryData: GeometryData | null = null;
-
 /**
  * 生成球体几何数据
  */
-function generateSphereGeometry(radius: number, widthSegments: number, heightSegments: number): GeometryData {
+function generateSphereGeometry(
+  radius: number,
+  widthSegments: number,
+  heightSegments: number,
+): GeometryData {
   const positions: number[] = [];
   const indices: number[] = [];
 
@@ -626,26 +623,122 @@ function generateCubeGeometry(width: number, height: number, depth: number): Geo
 
   const positions = new Float32Array([
     // Front face
-    -hw, -hh, hd,  hw, -hh, hd,  hw, hh, hd,  -hw, hh, hd,
+    -hw,
+    -hh,
+    hd,
+    hw,
+    -hh,
+    hd,
+    hw,
+    hh,
+    hd,
+    -hw,
+    hh,
+    hd,
     // Back face
-    hw, -hh, -hd,  -hw, -hh, -hd,  -hw, hh, -hd,  hw, hh, -hd,
+    hw,
+    -hh,
+    -hd,
+    -hw,
+    -hh,
+    -hd,
+    -hw,
+    hh,
+    -hd,
+    hw,
+    hh,
+    -hd,
     // Top face
-    -hw, hh, hd,  hw, hh, hd,  hw, hh, -hd,  -hw, hh, -hd,
+    -hw,
+    hh,
+    hd,
+    hw,
+    hh,
+    hd,
+    hw,
+    hh,
+    -hd,
+    -hw,
+    hh,
+    -hd,
     // Bottom face
-    -hw, -hh, -hd,  hw, -hh, -hd,  hw, -hh, hd,  -hw, -hh, hd,
+    -hw,
+    -hh,
+    -hd,
+    hw,
+    -hh,
+    -hd,
+    hw,
+    -hh,
+    hd,
+    -hw,
+    -hh,
+    hd,
     // Right face
-    hw, -hh, hd,  hw, -hh, -hd,  hw, hh, -hd,  hw, hh, hd,
+    hw,
+    -hh,
+    hd,
+    hw,
+    -hh,
+    -hd,
+    hw,
+    hh,
+    -hd,
+    hw,
+    hh,
+    hd,
     // Left face
-    -hw, -hh, -hd,  -hw, -hh, hd,  -hw, hh, hd,  -hw, hh, -hd,
+    -hw,
+    -hh,
+    -hd,
+    -hw,
+    -hh,
+    hd,
+    -hw,
+    hh,
+    hd,
+    -hw,
+    hh,
+    -hd,
   ]);
 
   const indices = new Uint16Array([
-    0, 1, 2, 0, 2, 3,       // Front
-    4, 5, 6, 4, 6, 7,       // Back
-    8, 9, 10, 8, 10, 11,    // Top
-    12, 13, 14, 12, 14, 15, // Bottom
-    16, 17, 18, 16, 18, 19, // Right
-    20, 21, 22, 20, 22, 23, // Left
+    0,
+    1,
+    2,
+    0,
+    2,
+    3, // Front
+    4,
+    5,
+    6,
+    4,
+    6,
+    7, // Back
+    8,
+    9,
+    10,
+    8,
+    10,
+    11, // Top
+    12,
+    13,
+    14,
+    12,
+    14,
+    15, // Bottom
+    16,
+    17,
+    18,
+    16,
+    18,
+    19, // Right
+    20,
+    21,
+    22,
+    20,
+    22,
+    23, // Left
   ]);
 
   return { positions, indices };
@@ -654,7 +747,12 @@ function generateCubeGeometry(width: number, height: number, depth: number): Geo
 /**
  * 生成圆环几何数据
  */
-function generateTorusGeometry(radius: number, tube: number, radialSegments: number, tubularSegments: number): GeometryData {
+function generateTorusGeometry(
+  radius: number,
+  tube: number,
+  radialSegments: number,
+  tubularSegments: number,
+): GeometryData {
   const positions: number[] = [];
   const indices: number[] = [];
 
@@ -692,7 +790,12 @@ function generateTorusGeometry(radius: number, tube: number, radialSegments: num
 /**
  * 生成圆柱体几何数据
  */
-function generateCylinderGeometry(radiusTop: number, radiusBottom: number, height: number, radialSegments: number): GeometryData {
+function generateCylinderGeometry(
+  radiusTop: number,
+  radiusBottom: number,
+  height: number,
+  radialSegments: number,
+): GeometryData {
   const positions: number[] = [];
   const indices: number[] = [];
   const halfHeight = height / 2;
@@ -706,11 +809,7 @@ function generateCylinderGeometry(radiusTop: number, radiusBottom: number, heigh
       const u = x / radialSegments;
       const theta = u * Math.PI * 2;
 
-      positions.push(
-        radius * Math.cos(theta),
-        posY,
-        radius * Math.sin(theta)
-      );
+      positions.push(radius * Math.cos(theta), posY, radius * Math.sin(theta));
     }
   }
 
@@ -733,11 +832,7 @@ function generateCylinderGeometry(radiusTop: number, radiusBottom: number, heigh
   for (let x = 0; x <= radialSegments; x++) {
     const u = x / radialSegments;
     const theta = u * Math.PI * 2;
-    positions.push(
-      radiusTop * Math.cos(theta),
-      halfHeight,
-      radiusTop * Math.sin(theta)
-    );
+    positions.push(radiusTop * Math.cos(theta), halfHeight, radiusTop * Math.sin(theta));
   }
 
   // 顶面索引
@@ -753,11 +848,7 @@ function generateCylinderGeometry(radiusTop: number, radiusBottom: number, heigh
   for (let x = 0; x <= radialSegments; x++) {
     const u = x / radialSegments;
     const theta = u * Math.PI * 2;
-    positions.push(
-      radiusBottom * Math.cos(theta),
-      -halfHeight,
-      radiusBottom * Math.sin(theta)
-    );
+    positions.push(radiusBottom * Math.cos(theta), -halfHeight, radiusBottom * Math.sin(theta));
   }
 
   // 底面索引
@@ -774,7 +865,11 @@ function generateCylinderGeometry(radiusTop: number, radiusBottom: number, heigh
 /**
  * 生成圆锥几何数据
  */
-function generateConeGeometry(radius: number, height: number, radialSegments: number): GeometryData {
+function generateConeGeometry(
+  radius: number,
+  height: number,
+  radialSegments: number,
+): GeometryData {
   return generateCylinderGeometry(0, radius, height, radialSegments);
 }
 
@@ -891,7 +986,7 @@ function setupEventListeners(): void {
   // GLB URL 输入
   const glbUrlInput = document.getElementById('glbUrl') as HTMLInputElement;
   const loadGlbBtn = document.getElementById('loadGlbBtn');
-  
+
   if (loadGlbBtn && glbUrlInput) {
     loadGlbBtn.addEventListener('click', () => {
       const url = glbUrlInput.value.trim();
@@ -903,7 +998,7 @@ function setupEventListeners(): void {
 
   // 示例几何体按钮
   const sampleBtns = document.querySelectorAll('.sample-btn');
-  sampleBtns.forEach(btn => {
+  sampleBtns.forEach((btn) => {
     btn.addEventListener('click', (e) => {
       const type = (e.target as HTMLElement).dataset.type;
       if (type) {

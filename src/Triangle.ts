@@ -3,7 +3,7 @@ import type { Ray } from './Ray';
 
 /**
  * 三角形类
- * 
+ *
  * 用于存储三角形的三个顶点，并提供射线-三角形相交测试
  * 使用 Möller–Trumbore 算法进行高效的相交检测
  */
@@ -50,23 +50,11 @@ export class Triangle {
     i1: number,
     i2: number,
     triangleIndex: number = 0,
-    userData?: any
+    userData?: any,
   ): Triangle {
-    const a = new Vector3(
-      positions[i0 * 3],
-      positions[i0 * 3 + 1],
-      positions[i0 * 3 + 2]
-    );
-    const b = new Vector3(
-      positions[i1 * 3],
-      positions[i1 * 3 + 1],
-      positions[i1 * 3 + 2]
-    );
-    const c = new Vector3(
-      positions[i2 * 3],
-      positions[i2 * 3 + 1],
-      positions[i2 * 3 + 2]
-    );
+    const a = new Vector3(positions[i0 * 3], positions[i0 * 3 + 1], positions[i0 * 3 + 2]);
+    const b = new Vector3(positions[i1 * 3], positions[i1 * 3 + 1], positions[i1 * 3 + 2]);
+    const c = new Vector3(positions[i2 * 3], positions[i2 * 3 + 1], positions[i2 * 3 + 2]);
     return new Triangle(a, b, c, triangleIndex, userData);
   }
 
@@ -106,7 +94,7 @@ export class Triangle {
 
   /**
    * 射线-三角形相交测试（Möller–Trumbore 算法）
-   * 
+   *
    * @param ray - 射线
    * @param cullBackface - 是否剔除背面（默认 false）
    * @returns 相交距离，如果不相交返回 null
@@ -184,7 +172,10 @@ export class Triangle {
    * @param cullBackface - 是否剔除背面
    * @returns 重心坐标 {u, v, w}，如果不相交返回 null
    */
-  getBarycentricCoords(ray: Ray, cullBackface: boolean = false): { u: number; v: number; w: number } | null {
+  getBarycentricCoords(
+    ray: Ray,
+    cullBackface: boolean = false,
+  ): { u: number; v: number; w: number } | null {
     const EPSILON = 1e-8;
 
     const edge1 = new Vector3();

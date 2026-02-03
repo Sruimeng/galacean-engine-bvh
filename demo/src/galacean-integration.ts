@@ -24,6 +24,33 @@ import { BoundingBox, Ray as MathRay, Vector3 } from '@galacean/engine-math';
 import type { BVHTree } from '../../dist/index.mjs';
 import { AABB, BVHBuilder, BVHBuildStrategy, Ray } from '../../dist/index.mjs';
 
+// ============ 工具函数 ============
+
+function hslToRgb(h: number, s: number, l: number): { r: number; g: number; b: number } {
+  let r, g, b;
+
+  if (s === 0) {
+    r = g = b = l;
+  } else {
+    const hue2rgb = (p: number, q: number, t: number) => {
+      if (t < 0) t += 1;
+      if (t > 1) t -= 1;
+      if (t < 1 / 6) return p + (q - p) * 6 * t;
+      if (t < 1 / 2) return q;
+      if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+      return p;
+    };
+
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+    r = hue2rgb(p, q, h + 1 / 3);
+    g = hue2rgb(p, q, h);
+    b = hue2rgb(p, q, h - 1 / 3);
+  }
+
+  return { r, g, b };
+}
+
 // ============ 类型定义 ============
 
 interface SceneObject {
@@ -51,12 +78,6 @@ let highlightedObject: SceneObject | null = null;
 let continuousRaycast = false;
 let useBVH = true; // 是否使用 BVH 加速
 
-// 性能对比统计
-let bvhTotalTime = 0;
-let bruteTotalTime = 0;
-let bvhQueryCount = 0;
-let bruteQueryCount = 0;
-
 // 存储 BVH 构建时的包围盒快照（用于验证）
 const boundingBoxSnapshot: Map<number, BoundingBox> = new Map();
 
@@ -79,6 +100,159 @@ const config = {
 let lastTime = performance.now();
 let frameCount = 0;
 let fps = 0;
+
+// ============ 相机控制 ============
+
+function updateCameraPosition(): void {
+  const x = cameraRadius * Math.sin(cameraPhi) * Math.cos(cameraTheta);
+  const y = cameraRadius * Math.cos(cameraPhi);
+  const z = cameraRadius * Math.sin(cameraPhi) * Math.sin(cameraTheta);
+
+  cameraEntity.transform.setPosition(x, y, z);
+  cameraEntity.transform.lookAt(new GalaceanVector3(0, 0, 0));
+}
+
+// ============ UI 更新 ============
+
+function updateStats(): void {
+  const fpsEl = document.getElementById('fps');
+  const objectCountEl = document.getElementById('objectCount');
+
+  if (fpsEl) fpsEl.textContent = fps.toString();
+  if (objectCountEl) objectCountEl.textContent = sceneObjects.length.toString();
+}
+
+// ============ 暴力 Raycast（用于对比验证） ============
+
+/**
+ * 使用 BVH 构建时的包围盒快照进行暴力法 raycast
+ * 这确保了与 BVH 比较时使用相同的包围盒数据
+ */
+function bruteForceRaycast(ray: Ray): RaycastHit | null {
+  let closestHit: RaycastHit | null = null;
+  let closestDistance = Infinity;
+
+  for (const obj of sceneObjects) {
+    // 使用 BVH 构建时存储的包围盒快照，而不是实时包围盒
+    const bounds = boundingBoxSnapshot.get(obj.id);
+    if (!bounds) continue;
+
+    const aabb = new AABB(
+      new Vector3(bounds.min.x, bounds.min.y, bounds.min.z),
+      new Vector3(bounds.max.x, bounds.max.y, bounds.max.z),
+    );
+
+    const distance = aabb.intersectRayDistance(ray);
+    if (distance !== null && distance < closestDistance) {
+      closestDistance = distance;
+      closestHit = {
+        object: obj,
+        distance,
+        point: ray.getPoint(distance),
+      };
+    }
+  }
+
+  return closestHit;
+}
+
+// ============ Raycast 实现 ============
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function performRaycast(screenX: number, screenY: number): void {
+  if (!bvhTree) return;
+
+  // 从屏幕坐标创建射线
+  const camera = cameraEntity.getComponent(Camera)!;
+  const canvas = engine.canvas;
+
+  // 获取 canvas 的实际位置
+  const rect = (canvas._webCanvas as HTMLCanvasElement).getBoundingClientRect();
+  const x = screenX - rect.left;
+  const y = screenY - rect.top;
+
+  const ray = new MathRay();
+  camera.screenPointToRay(new GalaceanVector3(x, y, 0), ray);
+
+  // 转换为 BVH 的 Ray 类型
+  const bvhRay = new Ray(
+    new Vector3(ray.origin.x, ray.origin.y, ray.origin.z),
+    new Vector3(ray.direction.x, ray.direction.y, ray.direction.z),
+  );
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let results: any[] = [];
+  let raycastTime: number;
+
+  if (useBVH) {
+    // 使用 BVH 进行光线投射
+    const startTime = performance.now();
+    results = bvhTree.raycast(bvhRay, 1000);
+    raycastTime = performance.now() - startTime;
+  } else {
+    // 使用暴力法进行光线投射
+    const startTime = performance.now();
+    const bruteHit = bruteForceRaycast(bvhRay);
+    raycastTime = performance.now() - startTime;
+
+    if (bruteHit) {
+      results = [
+        {
+          object: bruteHit.object,
+          distance: bruteHit.distance,
+          point: bruteHit.point,
+        },
+      ];
+    }
+  }
+
+  // 更新 UI
+  const raycastTimeEl = document.getElementById('raycastTime');
+  if (raycastTimeEl) raycastTimeEl.textContent = `${raycastTime.toFixed(3)} ms`;
+
+  // 更新方法标签
+  const methodLabelEl = document.getElementById('methodLabel');
+  if (methodLabelEl) methodLabelEl.textContent = useBVH ? 'BVH' : '暴力法';
+
+  // 重置之前高亮的对象
+  if (highlightedObject) {
+    highlightedObject.material.baseColor.copyFrom(highlightedObject.originalColor);
+    highlightedObject = null;
+  }
+
+  // 处理命中结果
+  const hitStatusEl = document.getElementById('hitStatus');
+  const hitIndicator = document.getElementById('hitIndicator');
+
+  if (results.length > 0) {
+    const hit = results[0];
+    // 注意：CollisionResult 的 userData 存储在 object 属性中
+    const hitObject = hit.object as SceneObject | undefined;
+
+    // 安全检查 - 确保 hitObject 存在且有效
+    if (hitObject && hitObject.material && typeof hitObject.id === 'number') {
+      // 高亮命中的对象
+      hitObject.material.baseColor.set(1, 1, 0, 1); // 黄色高亮
+      highlightedObject = hitObject;
+
+      if (hitStatusEl) hitStatusEl.textContent = `命中 #${hitObject.id}`;
+      if (hitIndicator) {
+        hitIndicator.className = 'hit-indicator hit';
+      }
+    } else {
+      // userData 无效
+      if (hitStatusEl) hitStatusEl.textContent = '命中(无效数据)';
+      if (hitIndicator) {
+        hitIndicator.className = 'hit-indicator miss';
+      }
+    }
+  } else {
+    if (hitStatusEl) hitStatusEl.textContent = '未命中';
+    if (hitIndicator) {
+      hitIndicator.className = 'hit-indicator miss';
+    }
+  }
+}
 
 // ============ 初始化引擎 ============
 
@@ -118,17 +292,6 @@ async function initEngine(): Promise<void> {
   directLight2.intensity = 0.5;
 
   console.log('Galacean Engine 初始化完成');
-}
-
-// ============ 相机控制 ============
-
-function updateCameraPosition(): void {
-  const x = cameraRadius * Math.sin(cameraPhi) * Math.cos(cameraTheta);
-  const y = cameraRadius * Math.cos(cameraPhi);
-  const z = cameraRadius * Math.sin(cameraPhi) * Math.sin(cameraTheta);
-
-  cameraEntity.transform.setPosition(x, y, z);
-  cameraEntity.transform.lookAt(new GalaceanVector3(0, 0, 0));
 }
 
 function setupMouseControls(): void {
@@ -278,106 +441,6 @@ function buildBVH(): void {
   }
 }
 
-// ============ Raycast 实现 ============
-
-function performRaycast(screenX: number, screenY: number): void {
-  if (!bvhTree) return;
-
-  // 从屏幕坐标创建射线
-  const camera = cameraEntity.getComponent(Camera)!;
-  const canvas = engine.canvas;
-
-  // 获取 canvas 的实际位置
-  const rect = (canvas._webCanvas as HTMLCanvasElement).getBoundingClientRect();
-  const x = screenX - rect.left;
-  const y = screenY - rect.top;
-
-  const ray = new MathRay();
-  camera.screenPointToRay(new GalaceanVector3(x, y, 0), ray);
-
-  // 转换为 BVH 的 Ray 类型
-  const bvhRay = new Ray(
-    new Vector3(ray.origin.x, ray.origin.y, ray.origin.z),
-    new Vector3(ray.direction.x, ray.direction.y, ray.direction.z),
-  );
-
-  let results: any[] = [];
-  let raycastTime: number;
-
-  if (useBVH) {
-    // 使用 BVH 进行光线投射
-    const startTime = performance.now();
-    results = bvhTree.raycast(bvhRay, 1000);
-    raycastTime = performance.now() - startTime;
-    
-    bvhTotalTime += raycastTime;
-    bvhQueryCount++;
-  } else {
-    // 使用暴力法进行光线投射
-    const startTime = performance.now();
-    const bruteHit = bruteForceRaycast(bvhRay);
-    raycastTime = performance.now() - startTime;
-    
-    bruteTotalTime += raycastTime;
-    bruteQueryCount++;
-    
-    if (bruteHit) {
-      results = [{
-        object: bruteHit.object,
-        distance: bruteHit.distance,
-        point: bruteHit.point,
-      }];
-    }
-  }
-
-  // 更新 UI
-  const raycastTimeEl = document.getElementById('raycastTime');
-  if (raycastTimeEl) raycastTimeEl.textContent = `${raycastTime.toFixed(3)} ms`;
-
-  // 更新方法标签
-  const methodLabelEl = document.getElementById('methodLabel');
-  if (methodLabelEl) methodLabelEl.textContent = useBVH ? 'BVH' : '暴力法';
-
-  // 重置之前高亮的对象
-  if (highlightedObject) {
-    highlightedObject.material.baseColor.copyFrom(highlightedObject.originalColor);
-    highlightedObject = null;
-  }
-
-  // 处理命中结果
-  const hitStatusEl = document.getElementById('hitStatus');
-  const hitIndicator = document.getElementById('hitIndicator');
-
-  if (results.length > 0) {
-    const hit = results[0];
-    // 注意：CollisionResult 的 userData 存储在 object 属性中
-    const hitObject = hit.object as SceneObject | undefined;
-
-    // 安全检查 - 确保 hitObject 存在且有效
-    if (hitObject && hitObject.material && typeof hitObject.id === 'number') {
-      // 高亮命中的对象
-      hitObject.material.baseColor.set(1, 1, 0, 1); // 黄色高亮
-      highlightedObject = hitObject;
-
-      if (hitStatusEl) hitStatusEl.textContent = `命中 #${hitObject.id}`;
-      if (hitIndicator) {
-        hitIndicator.className = 'hit-indicator hit';
-      }
-    } else {
-      // userData 无效
-      if (hitStatusEl) hitStatusEl.textContent = '命中(无效数据)';
-      if (hitIndicator) {
-        hitIndicator.className = 'hit-indicator miss';
-      }
-    }
-  } else {
-    if (hitStatusEl) hitStatusEl.textContent = '未命中';
-    if (hitIndicator) {
-      hitIndicator.className = 'hit-indicator miss';
-    }
-  }
-}
-
 // ============ 批量性能对比测试 ============
 
 function runPerformanceComparison(): void {
@@ -453,49 +516,6 @@ function runPerformanceComparison(): void {
   // 显示对比面板
   const comparisonPanel = document.getElementById('comparisonPanel');
   if (comparisonPanel) comparisonPanel.style.display = 'block';
-}
-
-// ============ 重置性能统计 ============
-
-function resetPerformanceStats(): void {
-  bvhTotalTime = 0;
-  bruteTotalTime = 0;
-  bvhQueryCount = 0;
-  bruteQueryCount = 0;
-}
-
-// ============ 暴力 Raycast（用于对比验证） ============
-
-/**
- * 使用 BVH 构建时的包围盒快照进行暴力法 raycast
- * 这确保了与 BVH 比较时使用相同的包围盒数据
- */
-function bruteForceRaycast(ray: Ray): RaycastHit | null {
-  let closestHit: RaycastHit | null = null;
-  let closestDistance = Infinity;
-
-  for (const obj of sceneObjects) {
-    // 使用 BVH 构建时存储的包围盒快照，而不是实时包围盒
-    const bounds = boundingBoxSnapshot.get(obj.id);
-    if (!bounds) continue;
-
-    const aabb = new AABB(
-      new Vector3(bounds.min.x, bounds.min.y, bounds.min.z),
-      new Vector3(bounds.max.x, bounds.max.y, bounds.max.z),
-    );
-
-    const distance = aabb.intersectRayDistance(ray);
-    if (distance !== null && distance < closestDistance) {
-      closestDistance = distance;
-      closestHit = {
-        object: obj,
-        distance,
-        point: ray.getPoint(distance),
-      };
-    }
-  }
-
-  return closestHit;
 }
 
 // ============ 验证 BVH 正确性 ============
@@ -581,16 +601,6 @@ function validateBVHCorrectness(): void {
   }
 }
 
-// ============ UI 更新 ============
-
-function updateStats(): void {
-  const fpsEl = document.getElementById('fps');
-  const objectCountEl = document.getElementById('objectCount');
-
-  if (fpsEl) fpsEl.textContent = fps.toString();
-  if (objectCountEl) objectCountEl.textContent = sceneObjects.length.toString();
-}
-
 // ============ 动画循环 ============
 
 function startAnimationLoop(): void {
@@ -658,7 +668,6 @@ function setupEventListeners(): void {
       createSceneObjects(config.cubeCount);
       buildBVH();
       validateBVHCorrectness();
-      resetPerformanceStats();
     });
   }
 
@@ -674,11 +683,9 @@ function setupEventListeners(): void {
   if (toggleBVHBtn) {
     toggleBVHBtn.addEventListener('click', (e) => {
       useBVH = !useBVH;
-      (e.target as HTMLButtonElement).textContent = useBVH
-        ? '切换到暴力法'
-        : '切换到 BVH';
+      (e.target as HTMLButtonElement).textContent = useBVH ? '切换到暴力法' : '切换到 BVH';
       (e.target as HTMLButtonElement).className = useBVH ? 'toggle-btn bvh' : 'toggle-btn brute';
-      
+
       // 更新状态指示
       const bvhStatusEl = document.getElementById('bvhStatus');
       if (bvhStatusEl) {
@@ -698,33 +705,6 @@ function setupEventListeners(): void {
   window.addEventListener('resize', () => {
     engine.canvas.resizeByClientSize();
   });
-}
-
-// ============ 工具函数 ============
-
-function hslToRgb(h: number, s: number, l: number): { r: number; g: number; b: number } {
-  let r, g, b;
-
-  if (s === 0) {
-    r = g = b = l;
-  } else {
-    const hue2rgb = (p: number, q: number, t: number) => {
-      if (t < 0) t += 1;
-      if (t > 1) t -= 1;
-      if (t < 1 / 6) return p + (q - p) * 6 * t;
-      if (t < 1 / 2) return q;
-      if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
-      return p;
-    };
-
-    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-    const p = 2 * l - q;
-    r = hue2rgb(p, q, h + 1 / 3);
-    g = hue2rgb(p, q, h);
-    b = hue2rgb(p, q, h - 1 / 3);
-  }
-
-  return { r, g, b };
 }
 
 // ============ 主入口 ============
