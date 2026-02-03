@@ -72,6 +72,16 @@
         margin-bottom: 20px;
       }
 
+      .demo-card .tag {
+        display: inline-block;
+        padding: 4px 12px;
+        background: #e3f2fd;
+        color: #1976d2;
+        border-radius: 20px;
+        font-size: 0.85em;
+        margin-bottom: 15px;
+      }
+
       .demo-card .actions {
         display: flex;
         gap: 10px;
@@ -117,122 +127,160 @@
         color: white;
         text-decoration: none;
       }
+
+      .section-title {
+        color: white;
+        font-size: 1.8em;
+        margin-top: 40px;
+        margin-bottom: 20px;
+        padding-bottom: 10px;
+        border-bottom: 2px solid rgba(255,255,255,0.3);
+      }
     </style>
   </head>
   <body>
     <div class="container">
       <header>
-        <h1>Three.js USD DSL</h1>
+        <h1>🌲 Galacean Engine BVH</h1>
         <p>
-          A Domain Specific Language for USD (Universal Scene Description) integration with Three.js
+          高性能 BVH (Bounding Volume Hierarchy) 空间加速结构库
         </p>
       </header>
 
+      <h2 class="section-title">🎮 Galacean Engine 集成</h2>
       <div class="demo-grid">
-        <!-- Basic DSL Demo -->
-        <div class="demo-card">
-          <h2>Basic DSL</h2>
+        <!-- GLB Mesh BVH Demo -->
+        <div class="demo-card" style="border: 2px solid #e91e63;">
+          <span class="tag" style="background: #fce4ec; color: #c2185b;">🆕 三角形级 BVH</span>
+          <h2>📦 GLB Mesh BVH 对比测试</h2>
           <p>
-            Create simple 3D scenes with basic geometries, materials, and lighting. Perfect for
-            getting started.
+            <strong>类似 three-mesh-bvh！</strong>加载 GLB 模型，构建三角形级别的 BVH，
+            对比 BVH 加速与暴力遍历的性能差异。支持自定义 GLB URL 或使用示例几何体。
           </p>
           <div class="actions">
-            <button class="btn-primary" onclick="window.open('html/basic-dsl.html', '_blank')">
-              Open Demo
-            </button>
-            <button
-              class="btn-secondary"
-              onclick="window.open('examples/basic-scene.html', '_blank')"
-            >
-              View Source
+            <button class="btn-primary" onclick="window.open('html/glb-mesh-bvh.html', '_blank')">
+              打开演示
             </button>
           </div>
         </div>
 
-        <!-- Material DSL Demo -->
-        <div class="demo-card">
-          <h2>Material System</h2>
+        <!-- Mesh BVH Comparison Demo -->
+        <div class="demo-card" style="border: 2px solid #ff9800;">
+          <span class="tag" style="background: #fff3e0; color: #e65100;">🔥 对象级 BVH</span>
+          <h2>🎯 Mesh BVH 性能对比</h2>
           <p>
-            Explore advanced materials including PBR, physically-based rendering, and complex shader
-            networks.
+            <strong>直观对比 BVH 加速效果！</strong>实时展示 BVH 与暴力遍历的性能差异，
+            支持开关切换、完整性能测试，清晰展示加速比。
           </p>
           <div class="actions">
-            <button class="btn-primary" onclick="window.open('html/material-dsl.html', '_blank')">
-              Open Demo
-            </button>
-            <button
-              class="btn-secondary"
-              onclick="window.open('examples/material-demo.html', '_blank')"
-            >
-              View Source
+            <button class="btn-primary" onclick="window.open('html/mesh-bvh-comparison.html', '_blank')">
+              打开演示
             </button>
           </div>
         </div>
 
-        <!-- GLTF Model Demo -->
-        <div class="demo-card">
-          <h2>GLTF Models</h2>
+        <!-- Galacean Integration Demo -->
+        <div class="demo-card" style="border: 2px solid #4fc3f7;">
+          <span class="tag" style="background: #e1f5fe; color: #0277bd;">⭐ 推荐</span>
+          <h2>🎮 Galacean Engine 集成演示</h2>
           <p>
-            Load and display 3D models in GLTF format with animations, materials, and complex
-            hierarchies.
+            <strong>真正的 3D 渲染场景！</strong>使用 Galacean Engine 渲染立方体，
+            并使用 BVH 进行高效的光线投射。包含正确性验证功能。
           </p>
           <div class="actions">
-            <button class="btn-primary" onclick="window.open('html/gltf-demo.html', '_blank')">
-              Open Demo
+            <button class="btn-primary" onclick="window.open('html/galacean-integration.html', '_blank')">
+              打开演示
             </button>
-            <button
-              class="btn-secondary"
-              onclick="window.open('examples/model-demo.html', '_blank')"
-            >
-              View Source
+          </div>
+        </div>
+      </div>
+
+      <h2 class="section-title">📦 核心功能演示</h2>
+      <div class="demo-grid">
+        <!-- Raycasting Demo -->
+        <div class="demo-card">
+          <span class="tag">核心功能</span>
+          <h2>🎯 光线投射 (Raycasting)</h2>
+          <p>
+            高效的光线投射查询，支持大规模场景中的快速碰撞检测。
+            参考 three-mesh-bvh 的 Raycasting demo 实现。
+          </p>
+          <div class="actions">
+            <button class="btn-primary" onclick="window.open('html/raycasting.html', '_blank')">
+              打开演示
             </button>
           </div>
         </div>
 
-        <!-- Plugin Demo -->
+        <!-- Range Query Demo -->
         <div class="demo-card">
-          <h2>Plugin System</h2>
-          <p>Extend functionality with custom plugins for rendering, interaction, and more.</p>
+          <span class="tag">空间查询</span>
+          <h2>🔍 范围查询 (Range Query)</h2>
+          <p>
+            查找指定区域内的所有对象，支持球形和立方体范围查询。
+          </p>
           <div class="actions">
-            <button class="btn-primary" onclick="window.open('html/plugin-demo.html', '_blank')">
-              Open Demo
-            </button>
-            <button
-              class="btn-secondary"
-              onclick="window.open('examples/plugin-demo.html', '_blank')"
-            >
-              View Source
+            <button class="btn-primary" onclick="window.open('html/range-query.html', '_blank')">
+              打开演示
             </button>
           </div>
         </div>
 
-        <!-- MCP Demo -->
+        <!-- Nearest Neighbor Demo -->
         <div class="demo-card">
-          <h2>MCP Integration</h2>
-          <p>AI-powered scene generation and manipulation through Model Context Protocol.</p>
+          <span class="tag">空间查询</span>
+          <h2>📍 最近邻搜索 (Nearest Neighbor)</h2>
+          <p>
+            快速查找距离指定点最近的对象，适用于 AI 寻路、碰撞检测等场景。
+          </p>
           <div class="actions">
-            <button class="btn-primary" onclick="window.open('html/mcp-demo.html', '_blank')">
-              Open Demo
-            </button>
-            <button class="btn-secondary" onclick="window.open('examples/mcp-demo.html', '_blank')">
-              View Source
+            <button class="btn-primary" onclick="window.open('html/nearest-neighbor.html', '_blank')">
+              打开演示
             </button>
           </div>
         </div>
 
-        <!-- Undo/Redo Demo -->
+        <!-- Dynamic Objects Demo -->
         <div class="demo-card">
-          <h2>Undo/Redo System</h2>
-          <p>Complete undo/redo functionality with command pattern for all scene operations.</p>
+          <span class="tag">动态场景</span>
+          <h2>🔄 动态对象管理</h2>
+          <p>
+            支持对象的动态插入、更新和删除，适用于实时交互场景。
+          </p>
           <div class="actions">
-            <button class="btn-primary" onclick="window.open('html/undo-redo-demo.html', '_blank')">
-              Open Demo
+            <button class="btn-primary" onclick="window.open('html/dynamic-objects.html', '_blank')">
+              打开演示
             </button>
-            <button
-              class="btn-secondary"
-              onclick="window.open('examples/undo-redo-demo.html', '_blank')"
-            >
-              View Source
+          </div>
+        </div>
+      </div>
+
+      <h2 class="section-title">⚡ 性能测试</h2>
+      <div class="demo-grid">
+        <!-- Performance Benchmark -->
+        <div class="demo-card">
+          <span class="tag">性能</span>
+          <h2>📊 性能基准测试</h2>
+          <p>
+            对比不同构建策略（SAH、Median、Equal）的构建时间和查询性能。
+          </p>
+          <div class="actions">
+            <button class="btn-primary" onclick="window.open('html/benchmark.html', '_blank')">
+              打开演示
+            </button>
+          </div>
+        </div>
+
+        <!-- Stress Test -->
+        <div class="demo-card">
+          <span class="tag">性能</span>
+          <h2>🏋️ 压力测试</h2>
+          <p>
+            测试大规模场景（10万+对象）下的 BVH 性能表现。
+          </p>
+          <div class="actions">
+            <button class="btn-primary" onclick="window.open('html/stress-test.html', '_blank')">
+              打开演示
             </button>
           </div>
         </div>
@@ -240,28 +288,12 @@
 
       <footer class="footer">
         <p>
-          Built with ❤️ using <a href="https://threejs.org" target="_blank">Three.js</a> and
-          <a href="https://github.com/PixarAnimationStudios/USD" target="_blank">USD</a>
+          Built with ❤️ using <a href="https://galacean.antgroup.com/" target="_blank">Galacean Engine</a>
+          | 参考 <a href="https://github.com/gkjohnson/three-mesh-bvh" target="_blank">three-mesh-bvh</a>
         </p>
       </footer>
     </div>
 
-    <script>
-      // Add simple interactive effects
-      document.addEventListener('DOMContentLoaded', function () {
-        const cards = document.querySelectorAll('.demo-card');
-
-        cards.forEach((card) => {
-          card.style.opacity = '0';
-          card.style.transform = 'translateY(20px)';
-          card.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
-
-          setTimeout(() => {
-            card.style.opacity = '1';
-            card.style.transform = 'translateY(0)';
-          }, 100);
-        });
-      });
-    </script>
+    <script type="module" src="./src/index.ts"></script>
   </body>
 </html>

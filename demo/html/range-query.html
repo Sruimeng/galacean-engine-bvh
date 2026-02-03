@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BVH Range Query Demo - Galacean Engine</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #1a1a2e;
+      color: #eee;
+      overflow: hidden;
+    }
+
+    #canvas-container {
+      width: 100vw;
+      height: 100vh;
+      position: relative;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    .controls {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      background: rgba(0, 0, 0, 0.8);
+      padding: 20px;
+      border-radius: 10px;
+      min-width: 280px;
+      z-index: 100;
+    }
+
+    .controls h2 {
+      margin-bottom: 15px;
+      font-size: 1.2em;
+      color: #81c784;
+    }
+
+    .control-group {
+      margin-bottom: 15px;
+    }
+
+    .control-group label {
+      display: block;
+      margin-bottom: 5px;
+      font-size: 0.9em;
+      color: #aaa;
+    }
+
+    .control-group input[type="range"] {
+      width: 100%;
+      margin-bottom: 5px;
+    }
+
+    .control-group .value {
+      font-size: 0.85em;
+      color: #81c784;
+    }
+
+    .stats {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      background: rgba(0, 0, 0, 0.8);
+      padding: 20px;
+      border-radius: 10px;
+      min-width: 200px;
+      z-index: 100;
+    }
+
+    .stats h3 {
+      margin-bottom: 10px;
+      font-size: 1em;
+      color: #81c784;
+    }
+
+    .stat-item {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 8px;
+      font-size: 0.9em;
+    }
+
+    .stat-item .label {
+      color: #aaa;
+    }
+
+    .stat-item .value {
+      color: #81c784;
+      font-weight: bold;
+    }
+
+    .btn {
+      width: 100%;
+      padding: 10px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 0.9em;
+      margin-top: 10px;
+      transition: background 0.3s;
+    }
+
+    .btn-primary {
+      background: #81c784;
+      color: #1a1a2e;
+    }
+
+    .btn-primary:hover {
+      background: #66bb6a;
+    }
+
+    .info {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      background: rgba(0, 0, 0, 0.8);
+      padding: 15px;
+      border-radius: 10px;
+      font-size: 0.85em;
+      color: #aaa;
+      max-width: 400px;
+    }
+
+    .info h4 {
+      color: #81c784;
+      margin-bottom: 8px;
+    }
+
+    .result-indicator {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      background: rgba(0, 0, 0, 0.8);
+      padding: 15px 25px;
+      border-radius: 10px;
+      font-size: 1.1em;
+      color: #81c784;
+    }
+  </style>
+</head>
+<body>
+  <div id="canvas-container">
+    <canvas id="canvas"></canvas>
+  </div>
+
+  <div class="controls">
+    <h2>🔍 范围查询控制</h2>
+    
+    <div class="control-group">
+      <label>对象数量</label>
+      <input type="range" id="objectCount" min="100" max="5000" value="1000" step="100">
+      <span class="value" id="objectCountValue">1000</span>
+    </div>
+
+    <div class="control-group">
+      <label>查询半径</label>
+      <input type="range" id="queryRadius" min="5" max="50" value="20" step="1">
+      <span class="value" id="queryRadiusValue">20</span>
+    </div>
+
+    <div class="control-group">
+      <label>查询点移动速度</label>
+      <input type="range" id="moveSpeed" min="0" max="100" value="50" step="1">
+      <span class="value" id="moveSpeedValue">50</span>
+    </div>
+
+    <button class="btn btn-primary" id="rebuildBtn">重建场景</button>
+  </div>
+
+  <div class="stats">
+    <h3>📊 查询统计</h3>
+    <div class="stat-item">
+      <span class="label">FPS</span>
+      <span class="value" id="fps">0</span>
+    </div>
+    <div class="stat-item">
+      <span class="label">查询时间</span>
+      <span class="value" id="queryTime">0 ms</span>
+    </div>
+    <div class="stat-item">
+      <span class="label">范围内对象</span>
+      <span class="value" id="foundCount">0</span>
+    </div>
+    <div class="stat-item">
+      <span class="label">总对象数</span>
+      <span class="value" id="totalCount">0</span>
+    </div>
+  </div>
+
+  <div class="info">
+    <h4>使用说明</h4>
+    <p>
+      此演示展示了 BVH 加速的范围查询。绿色球体表示查询范围，
+      范围内的对象会被高亮显示。移动鼠标可以改变查询中心点。
+    </p>
+  </div>
+
+  <div class="result-indicator" id="resultIndicator">
+    找到: <span id="foundRate">0</span> 个对象
+  </div>
+
+  <script type="module" src="../src/range-query.ts"></script>
+</body>
+</html>
